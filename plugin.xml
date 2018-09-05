@@ -68,6 +68,8 @@
 
         <source-file src="src/android/BLECentralPlugin.java"
             target-dir="src/com/megster/cordova/ble/central"/>
+        <source-file src="src/android/BLEService.java"
+            target-dir="src/com/megster/cordova/ble/central"/>
         <source-file src="src/android/BLECommand.java"
             target-dir="src/com/megster/cordova/ble/central"/>
         <source-file src="src/android/Peripheral.java"
