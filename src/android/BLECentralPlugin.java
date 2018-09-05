@@ -43,7 +43,6 @@ import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONException;
-import com.megster.cordova.ble.central.BLEService;
 
 import java.util.*;
 
