@@ -43,6 +43,7 @@ import org.apache.cordova.PluginResult;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONException;
+import com.megster.cordova.ble.central.BLEService;
 
 import java.util.*;
 
@@ -126,9 +127,9 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
     public void onResume(boolean multitasking) {
         cordova.getActivity().startService(new Intent(cordova.getActivity(), BLEService.class));
 
-        IntentFilter filter = new IntentFilter("com.megster.cordova.ble.central.BLERestart");
-        BroadcastReceiver mReceiver = new BLEBroadcastReceiver();
-        cordova.getActivity().registerReceiver(mReceiver, filter);
+//        IntentFilter filter = new IntentFilter("com.megster.cordova.ble.central.BLERestart");
+//        BroadcastReceiver mReceiver = new BLEBroadcastReceiver();
+//        cordova.getActivity().registerReceiver(mReceiver, filter);
 
 
         JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(cordova.getActivity(), BLEService.class));
