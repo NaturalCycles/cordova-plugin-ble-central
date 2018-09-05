@@ -132,7 +132,7 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
 
 
         JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(cordova.getActivity(), BLEService.class));
-        builder.setMinimumLatency(5000);
+//        builder.setMinimumLatency(5000);
 //        builder.setOverrideDeadline(5 * 60 * 1000);
         builder.setPeriodic(10 * 60 * 1000);
 
