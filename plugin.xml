@@ -56,14 +56,20 @@
             <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
             <uses-permission android:name="android.permission.BLUETOOTH"/>
             <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"/>
+            <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
         </config-file>
         
         <config-file target="AndroidManifest.xml" parent="/manifest/application">
             <service
-                android:name="com.megster.cordova.ble.central.BLEService"
+                android:name="com.megster.cordova.ble.central.BLECentralPlugin$BLEService"
                 android:enabled="true"
                 android:exported="true"
                 android:permission="android.permission.BIND_JOB_SERVICE" />
+            <receiver android:name="com.megster.cordova.ble.central.BLEBroadcastReceiver" >
+                <intent-filter>
+                    <action android:name="com.megster.cordova.ble.central.BLERestart" />
+                </intent-filter>
+            </receiver>
         </config-file>
 
         <source-file src="src/android/BLECentralPlugin.java"
