@@ -843,39 +843,33 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
                             peripherals.put(macAddress, peripheral);
                         }
 
-                        Peripheral peripheral = peripherals.get(macAddress);
-                        if (peripheral != null) {
-                            bluetoothAdapter.startDiscovery();
+//                        bluetoothAdapter.startDiscovery();
 
-                            List<ScanFilter> filters = new ArrayList();
-                            ScanFilter scanFilter = new ScanFilter.Builder()
-                                    .setServiceUuid(new ParcelUuid(serviceUUIDs[0]))
-                                    .build();
-                            filters.add(scanFilter);
+                        List<ScanFilter> filters = new ArrayList();
+                        ScanFilter scanFilter = new ScanFilter.Builder()
+                                .setServiceUuid(new ParcelUuid(serviceUUIDs[0]))
+                                .build();
+                        filters.add(scanFilter);
 
-                            ScanSettings settings = new ScanSettings.Builder()
-                                    .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
-                                    .build();
-                            bluetoothAdapter.getBluetoothLeScanner().startScan(filters, settings, new ScanCallback() {
-                                @Override
-                                public void onScanResult(int callbackType, ScanResult result) {
-                                    super.onScanResult(callbackType, result);
-                                    Log.d("NATURAL", "scan result");
-                                    saveLog(new Date().toString() + " NATURAL ERROR - scan result");
-                                    bluetoothAdapter.getBluetoothLeScanner().stopScan(new ScanCallback() {
-                                        @Override
-                                        public void onScanResult(int callbackType, ScanResult result) {
-                                            super.onScanResult(callbackType, result);
-                                            Log.e("NATURAL", "scan stopped");
-                                            saveLog(new Date().toString() + " NATURAL - scan stopped");
-                                        }
-                                    });
-                                }
-                            });
-                        } else {
-                            Log.e("NATURAL CALLBACK ERROR", "Peripheral not found");
-                            saveLog(new Date().toString() + " NATURAL Callback error - peripheral not found");
-                        }
+                        ScanSettings settings = new ScanSettings.Builder()
+                                .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
+                                .build();
+                        bluetoothAdapter.getBluetoothLeScanner().startScan(filters, settings, new ScanCallback() {
+                            @Override
+                            public void onScanResult(int callbackType, ScanResult result) {
+                                super.onScanResult(callbackType, result);
+                                Log.d("NATURAL", "scan result");
+                                saveLog(new Date().toString() + " NATURAL - scan result");
+                                bluetoothAdapter.getBluetoothLeScanner().stopScan(new ScanCallback() {
+                                    @Override
+                                    public void onScanResult(int callbackType, ScanResult result) {
+                                        super.onScanResult(callbackType, result);
+                                        Log.e("NATURAL", "scan stopped");
+                                        saveLog(new Date().toString() + " NATURAL - scan stopped");
+                                    }
+                                });
+                            }
+                        });
                     } catch (Exception ex) {
                         Log.e("NATURAL ERROR", ex.toString());
                         saveLog(new Date().toString() + " NATURAL ERROR - " + ex.toString());
