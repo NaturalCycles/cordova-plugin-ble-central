@@ -164,37 +164,6 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
     @Override
     public void onStart() {
         super.onStart();
-//        Log.d(NATURAL_TAG, "in on start");
-//        if(!isBLEServiceRunning(BLEService.class)) {
-//            Log.d(NATURAL_TAG, "Starting service");
-//            BLEService.saveLog(new Date().toString() + " NATURAL - starting service");
-//            cordova.getActivity().startService(new Intent(cordova.getActivity(), BLEService.class));
-////            ContextCompat.startForegroundService(cordova.getActivity(), new Intent(cordova.getActivity(), BLEService.class));
-//        } else {
-//            Log.d(NATURAL_TAG, "Service already started - skipping start");
-//            BLEService.saveLog(new Date().toString() + " NATURAL - skipping start service");
-//        }
-//
-//        IntentFilter filter = new IntentFilter("com.megster.cordova.ble.central.BLERestart");
-//        BroadcastReceiver mReceiver = new BLEBroadcastReceiver();
-//        cordova.getActivity().registerReceiver(mReceiver, filter);
-//
-//        JobScheduler tm = (JobScheduler) cordova.getActivity().getSystemService(Context.JOB_SCHEDULER_SERVICE);
-//        Log.d(NATURAL_TAG, "number of pending jobs: " + tm.getAllPendingJobs().size());
-//        if(tm.getAllPendingJobs().size() > 0) {
-//            Log.d(NATURAL_TAG, "Job already scheduled; skipping scheduling");
-//            BLEService.saveLog(new Date().toString() + " NATURAL - scheduling job");
-//            return;
-//        } else {
-//            JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(cordova.getActivity(), BLEService.class));
-//            builder.setMinimumLatency(5000);
-//            builder.setOverrideDeadline(1 * 60 * 1000);
-//
-//            Log.d(NATURAL_TAG, "Scheduling job from on start");
-//            tm.schedule(builder.build());
-//        }
-
-//        ContextCompat.startForegroundService(cordova.getActivity(), new Intent(cordova.getActivity(), BLEService.class));
     }
 
     private void initService() {
@@ -203,7 +172,6 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
             Log.d(NATURAL_TAG, "Starting service");
             BLEService.saveLog(new Date().toString() + " NATURAL - starting service");
             cordova.getActivity().startService(new Intent(cordova.getActivity(), BLEService.class));
-//            ContextCompat.startForegroundService(cordova.getActivity(), new Intent(cordova.getActivity(), BLEService.class));
         } else {
             Log.d(NATURAL_TAG, "Service already started - skipping start");
             BLEService.saveLog(new Date().toString() + " NATURAL - skipping start service");
