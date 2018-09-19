@@ -26,6 +26,11 @@ import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothManager;
+import android.bluetooth.le.ScanCallback;
+import android.bluetooth.le.ScanFilter;
+import android.bluetooth.le.ScanRecord;
+import android.bluetooth.le.ScanResult;
+import android.bluetooth.le.ScanSettings;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -35,6 +40,7 @@ import android.content.IntentFilter;
 import android.os.Handler;
 import android.os.Build;
 
+import android.os.ParcelUuid;
 import android.provider.Settings;
 import android.support.v4.app.NotificationCompat;
 import android.util.Log;
@@ -60,7 +66,7 @@ import java.util.*;
 import static android.bluetooth.BluetoothDevice.DEVICE_TYPE_DUAL;
 import static android.bluetooth.BluetoothDevice.DEVICE_TYPE_LE;
 
-public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.LeScanCallback {
+public class BLECentralPlugin extends CordovaPlugin {
     // actions
     private static final String SCAN = "scan";
     private static final String START_SCAN = "startScan";
@@ -231,8 +237,7 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
 
         } else if (action.equals(STOP_SCAN)) {
 
-//            TODO: try to replace with bluetoothAdapter.getBluetoothLeScanner().stopScan();
-            bluetoothAdapter.stopLeScan(this);
+            bluetoothAdapter.getBluetoothLeScanner().stopScan(scanCallback);
             callbackContext.success();
 
         } else if (action.equals(LIST)) {
@@ -463,8 +468,8 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
     }
 
     private void connect(CallbackContext callbackContext, String macAddress) {
-        if (!peripherals.containsKey(macAddress) && BLECentralPlugin.this.bluetoothAdapter.checkBluetoothAddress(macAddress)) {
-            BluetoothDevice device = BLECentralPlugin.this.bluetoothAdapter.getRemoteDevice(macAddress);
+        if (!peripherals.containsKey(macAddress) && bluetoothAdapter.checkBluetoothAddress(macAddress)) {
+            BluetoothDevice device = bluetoothAdapter.getRemoteDevice(macAddress);
             Peripheral peripheral = new Peripheral(device);
             peripherals.put(macAddress, peripheral);
         }
@@ -677,11 +682,19 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
         discoverCallback = callbackContext;
 
         if (serviceUUIDs != null && serviceUUIDs.length > 0) {
-//            TODO: try to replace with bluetoothAdapter.getBluetoothLeScanner().startScan();
-            bluetoothAdapter.startLeScan(serviceUUIDs, this);
+            List<ScanFilter> filters = new ArrayList();
+            ScanFilter scanFilter = new ScanFilter.Builder()
+                    .setServiceUuid(new ParcelUuid(serviceUUIDs[0]))
+                    .build();
+            filters.add(scanFilter);
+
+            ScanSettings settings = new ScanSettings.Builder()
+                    .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
+                    .build();
+
+            bluetoothAdapter.getBluetoothLeScanner().startScan(filters, settings, scanCallback);
         } else {
-//            TODO: try to replace with bluetoothAdapter.getBluetoothLeScanner().startScan();
-            bluetoothAdapter.startLeScan(this);
+            bluetoothAdapter.getBluetoothLeScanner().startScan(scanCallback);
         }
 
         if (scanSeconds > 0) {
@@ -690,8 +703,7 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
                 @Override
                 public void run() {
                     LOG.d(TAG, "Stopping Scan");
-//            TODO: try to replace with bluetoothAdapter.getBluetoothLeScanner().stopScan();
-                    BLECentralPlugin.this.bluetoothAdapter.stopLeScan(BLECentralPlugin.this);
+                    bluetoothAdapter.getBluetoothLeScanner().stopScan(scanCallback);
                 }
             }, scanSeconds * 1000);
         }
@@ -727,33 +739,59 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
         callbackContext.sendPluginResult(result);
     }
 
-    @Override
-    public void onLeScan(BluetoothDevice device, int rssi, byte[] scanRecord) {
+    private ScanCallback scanCallback = new ScanCallback() {
+        @Override
+        public void onScanResult(int callbackType, ScanResult result) {
+            super.onScanResult(callbackType, result);
 
-        String address = device.getAddress();
-        boolean alreadyReported = peripherals.containsKey(address) && !peripherals.get(address).isUnscanned();
+            Log.d(NATURAL_TAG, "on scan result: " + result.toString());
+            BLEService.saveLog( new Date().toString() + " NATURAL - on scan result: " + result.toString());
 
-        if (!alreadyReported) {
+            BluetoothDevice device = result.getDevice();
+            int rssi = result.getRssi();
+            ScanRecord scanRecord = result.getScanRecord();
 
-            Peripheral peripheral = new Peripheral(device, rssi, scanRecord);
-            peripherals.put(device.getAddress(), peripheral);
+            String address = device.getAddress();
+            boolean alreadyReported = peripherals.containsKey(address) && !peripherals.get(address).isUnscanned();
 
-            if (discoverCallback != null) {
-                PluginResult result = new PluginResult(PluginResult.Status.OK, peripheral.asJSONObject());
-                result.setKeepCallback(true);
-                discoverCallback.sendPluginResult(result);
-            }
+            if (!alreadyReported) {
 
-        } else {
-            Peripheral peripheral = peripherals.get(address);
-            peripheral.update(rssi, scanRecord);
-            if (reportDuplicates && discoverCallback != null) {
-                PluginResult result = new PluginResult(PluginResult.Status.OK, peripheral.asJSONObject());
-                result.setKeepCallback(true);
-                discoverCallback.sendPluginResult(result);
+                Peripheral peripheral = new Peripheral(device, rssi, scanRecord.getBytes());
+                peripherals.put(device.getAddress(), peripheral);
+
+                if (discoverCallback != null) {
+                    PluginResult pluginResult = new PluginResult(PluginResult.Status.OK, peripheral.asJSONObject());
+                    pluginResult.setKeepCallback(true);
+                    discoverCallback.sendPluginResult(pluginResult);
+                }
+
+            } else {
+                Peripheral peripheral = peripherals.get(address);
+                peripheral.update(rssi, scanRecord.getBytes());
+                if (reportDuplicates && discoverCallback != null) {
+                    PluginResult pluginResult = new PluginResult(PluginResult.Status.OK, peripheral.asJSONObject());
+                    pluginResult.setKeepCallback(true);
+                    discoverCallback.sendPluginResult(pluginResult);
+                }
             }
         }
-    }
+
+        @Override
+        public void onBatchScanResults(List<ScanResult> results) {
+            super.onBatchScanResults(results);
+
+            Log.d(NATURAL_TAG, "onBatchScanResults");
+            BLEService.saveLog( new Date().toString() + " NATURAL - onBatchScanResults");
+        }
+
+        @Override
+        public void onScanFailed(int errorCode) {
+            super.onScanFailed(errorCode);
+
+            Log.d(NATURAL_TAG, "onScanFailed; errorCode: " + String.valueOf(errorCode));
+            BLEService.saveLog( new Date().toString() + " NATURAL - onScanFailed; errorCode: " + String.valueOf(errorCode));
+        }
+    };
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -790,9 +828,9 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
             case REQUEST_ACCESS_COARSE_LOCATION:
                 LOG.d(TAG, "User granted Coarse Location Access");
                 findLowEnergyDevices(permissionCallback, serviceUUIDs, scanSeconds);
-                this.permissionCallback = null;
-                this.serviceUUIDs = null;
-                this.scanSeconds = -1;
+                permissionCallback = null;
+                serviceUUIDs = null;
+                scanSeconds = -1;
                 break;
         }
     }
