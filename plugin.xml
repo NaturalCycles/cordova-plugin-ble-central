@@ -69,14 +69,16 @@
                 <intent-filter>
                     <action android:name="com.megster.cordova.ble.central.BLERestart" />
                 </intent-filter>
+                <intent-filter>
+                    <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                    <category android:name="android.intent.category.DEFAULT" />
+                </intent-filter>
             </receiver>
         </config-file>
 
         <source-file src="src/android/BLECentralPlugin.java"
             target-dir="src/com/megster/cordova/ble/central"/>
         <source-file src="src/android/BLEBroadcastReceiver.java"
-            target-dir="src/com/megster/cordova/ble/central"/>
-        <source-file src="src/android/BLEService.java"
             target-dir="src/com/megster/cordova/ble/central"/>
         <source-file src="src/android/BLECommand.java"
             target-dir="src/com/megster/cordova/ble/central"/>
