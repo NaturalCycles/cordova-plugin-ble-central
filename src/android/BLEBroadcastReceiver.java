@@ -23,24 +23,26 @@ public class BLEBroadcastReceiver extends BroadcastReceiver {
         Log.d(BLECentralPlugin.NATURAL_TAG, "Broadcast receiver on receive");
         saveLog(new Date().toString() + " NATURAL - broadcast receiver on receive");
 
-        ContextCompat.startForegroundService(context, new Intent(context, BLECentralPlugin.BLEService.class));
+        Intent serviceIntent = new Intent(context, BLECentralPlugin.BLEService.class);
+        serviceIntent.putExtra(BLECentralPlugin.MAC_ADDRESS, intent.getStringExtra(BLECentralPlugin.MAC_ADDRESS));
+        ContextCompat.startForegroundService(context, serviceIntent);
 
         try {
             JobScheduler tm = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
-//            if(tm.getAllPendingJobs().size() > 0) {
-//                Log.d( BLECentralPlugin.NATURAL_TAG, "Job already scheduled; skipping scheduling");
-//                saveLog(new Date().toString() + " NATURAL broadcast - Job already scheduled; skipping scheduling");
-//                return;
-//            } else {
-            JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(context, BLECentralPlugin.BLEService.class));
-            builder.setMinimumLatency(2 * 60 * 1000);
-            builder.setOverrideDeadline(2 * 60 * 1000);
+            if(tm.getAllPendingJobs().size() > 0) {
+                Log.d( BLECentralPlugin.NATURAL_TAG, "Job already scheduled; skipping scheduling");
+                saveLog(new Date().toString() + " NATURAL broadcast - Job already scheduled; skipping scheduling");
+            } else {
+                JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(context, BLECentralPlugin.BLEService.class));
+                builder.setMinimumLatency(1000);
+                builder.setOverrideDeadline(2 * 60 * 1000);
+                builder.setPersisted(true);
 
-            Log.d(BLECentralPlugin.NATURAL_TAG, "Broadcast Scheduling job");
-            saveLog(new Date().toString() + " NATURAL broadcast - scheduling job");
+                Log.d(BLECentralPlugin.NATURAL_TAG, "Broadcast Scheduling job");
+                saveLog(new Date().toString() + " NATURAL broadcast - scheduling job");
 
-            tm.schedule(builder.build());
-//            }
+                tm.schedule(builder.build());
+            }
         } catch (Exception ex) {
             Log.e(BLECentralPlugin.NATURAL_TAG + " ERROR", ex.toString());
             saveLog(new Date().toString() + " NATURAL ERROR - " + ex.toString());
