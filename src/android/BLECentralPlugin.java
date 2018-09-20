@@ -43,6 +43,7 @@ import android.os.Build;
 import android.os.ParcelUuid;
 import android.provider.Settings;
 import android.support.v4.app.NotificationCompat;
+import android.support.v4.content.ContextCompat;
 import android.util.Log;
 
 import org.apache.cordova.CallbackContext;
@@ -109,7 +110,8 @@ public class BLECentralPlugin extends CordovaPlugin {
     private static final String TAG = "BLEPlugin";
     private static final int REQUEST_ENABLE_BLUETOOTH = 1;
 
-    static BluetoothAdapter bluetoothAdapter;
+    private static BluetoothAdapter bluetoothAdapter;
+    private static BLEBroadcastReceiver mReceiver;
 
     // key is the MAC Address
     static Map<String, Peripheral> peripherals = new LinkedHashMap<String, Peripheral>();
@@ -160,6 +162,7 @@ public class BLECentralPlugin extends CordovaPlugin {
 
             Intent serviceIntent = new Intent(cordova.getActivity(), BLEService.class);
             serviceIntent.putExtra(MAC_ADDRESS, macAddress);
+//            ContextCompat.startForegroundService(cordova.getActivity(), serviceIntent);
             cordova.getActivity().startService(serviceIntent);
         } else {
             Log.d(NATURAL_TAG, "Service already started - skipping start");
@@ -167,7 +170,7 @@ public class BLECentralPlugin extends CordovaPlugin {
         }
 
         IntentFilter filter = new IntentFilter("com.megster.cordova.ble.central.BLERestart");
-        BroadcastReceiver mReceiver = new BLEBroadcastReceiver();
+        mReceiver = new BLEBroadcastReceiver();
         cordova.getActivity().registerReceiver(mReceiver, filter);
 
         JobScheduler tm = (JobScheduler) cordova.getActivity().getSystemService(Context.JOB_SCHEDULER_SERVICE);
@@ -848,7 +851,6 @@ public class BLECentralPlugin extends CordovaPlugin {
 
     public static class BLEService extends JobService {
 
-        private BroadcastReceiver mReceiver;
         private static String thermMacAddress;
 
         public BLEService() {}
@@ -908,6 +910,16 @@ public class BLECentralPlugin extends CordovaPlugin {
                         Peripheral peripheral = new Peripheral(device);
                         peripherals.put(thermMacAddress, peripheral);
                         device.connectGatt(BLEService.this, true, new Peripheral(device));
+
+                        if(callbackContext == null) {
+                            Log.d(BLECentralPlugin.NATURAL_TAG, "callbackContext is null");
+                            saveLog(new Date().toString() + " NATURAL - callbackContext is null");
+                        }
+
+                        PluginResult result = new PluginResult(PluginResult.Status.NO_RESULT);
+                        result.setKeepCallback(true);
+                        callbackContext.sendPluginResult(result);
+
                         Log.d(BLECentralPlugin.NATURAL_TAG, "connect gatt called on device");
                         saveLog(new Date().toString() + " NATURAL - connect gatt called on device");
                     } catch (Exception ex) {
@@ -928,15 +940,15 @@ public class BLECentralPlugin extends CordovaPlugin {
                             Log.d(NATURAL_TAG, "service stopped");
                             saveLog(new Date().toString() + " NATURAL - service stopped");
 
-                            JobScheduler tm = (JobScheduler) BLEService.this.getSystemService(Context.JOB_SCHEDULER_SERVICE);
-                            if(tm.getAllPendingJobs().size() < 5) {
+                            JobScheduler scheduler = (JobScheduler) BLEService.this.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+                            if(scheduler.getAllPendingJobs().size() < 1) {
                                 JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(BLEService.this, BLEService.class));
                                 builder.setMinimumLatency(2 * 60 * 1000);
                                 builder.setOverrideDeadline(2 * 60 * 1000);
-                                tm.schedule(builder.build());
+                                scheduler.schedule(builder.build());
 
                                 Log.d(NATURAL_TAG, "schedule job from handler2");
-                                Log.d(NATURAL_TAG, "handler2; number of jobs: " + tm.getAllPendingJobs().size());
+                                Log.d(NATURAL_TAG, "handler2; number of jobs: " + scheduler.getAllPendingJobs().size());
                                 saveLog(new Date().toString() + " NATURAL - schedule job from handler2");
                             } else {
                                 Log.d(NATURAL_TAG, "handler2 job already scheduled; skipping scheduling");
@@ -945,7 +957,10 @@ public class BLECentralPlugin extends CordovaPlugin {
                         }
                     }, 5000);
 
-                    handler.postDelayed(this, 5 * 60 * 1000);
+                    int minutes = 5;
+                    Log.d(NATURAL_TAG, "calling handler to run in " + String.valueOf(minutes) + " minutes");
+                    saveLog(new Date().toString() + " NATURAL - calling handler to run in " + String.valueOf(minutes) + " minutes");
+                    handler.postDelayed(this, minutes * 60 * 1000);
 
                 }
             }, 5000);
@@ -956,6 +971,15 @@ public class BLECentralPlugin extends CordovaPlugin {
 
         @Override
         public boolean onStopJob(JobParameters params) {
+            JobScheduler scheduler = (JobScheduler) BLEService.this.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+            JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(BLEService.this, BLEService.class));
+            builder.setMinimumLatency(2 * 60 * 1000);
+            builder.setOverrideDeadline(2 * 60 * 1000);
+            scheduler.schedule(builder.build());
+
+            Log.d(NATURAL_TAG, "On stop job scheduling job");
+            saveLog(new Date().toString() + " NATURAL - On stop job scheduling job");
+
             // Return false to drop the job.
             return true;
         }
