@@ -936,7 +936,7 @@ public class BLECentralPlugin extends CordovaPlugin {
                             Log.d(BLECentralPlugin.NATURAL_TAG, "callbackContext is null");
                             saveLog(new Date().toString() + " NATURAL - callbackContext is null");
                         } else {
-                            PluginResult result = new PluginResult(PluginResult.Status.);
+                            PluginResult result = new PluginResult(PluginResult.Status.NO_RESULT);
                             result.setKeepCallback(true);
                             callbackContext.sendPluginResult(result);
 
