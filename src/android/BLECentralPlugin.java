@@ -24,6 +24,7 @@ import android.app.job.JobScheduler;
 import android.app.job.JobService;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.le.ScanCallback;
@@ -117,6 +118,8 @@ public class BLECentralPlugin extends CordovaPlugin {
     static Map<String, Peripheral> peripherals = new LinkedHashMap<String, Peripheral>();
     static CallbackContext callbackContext;
     static String macAddress = "18:7A:93:6C:CD:A1";
+    private static UUID serviceUUID;
+    private static UUID characteristicUUID;
 
     // scan options
     boolean reportDuplicates = false;
@@ -252,6 +255,14 @@ public class BLECentralPlugin extends CordovaPlugin {
             macAddress = args.getString(0);
             BLECentralPlugin.callbackContext = callbackContext;
 
+            if(BLECentralPlugin.callbackContext != null) {
+                Log.d(NATURAL_TAG, "on connect; callbackContext set");
+                BLEService.saveLog(new Date().toString() + " NATURAL - on connect; callbackContext set");
+            } else {
+                Log.d(NATURAL_TAG, "on connect; callbackContext is null");
+                BLEService.saveLog(new Date().toString() + " NATURAL - on connect; callbackContext is null");
+            }
+
             connect(callbackContext, macAddress);
 
         } else if (action.equals(AUTOCONNECT)) {
@@ -310,15 +321,15 @@ public class BLECentralPlugin extends CordovaPlugin {
         } else if (action.equals(START_NOTIFICATION)) {
 
             macAddress = args.getString(0);
-            UUID serviceUUID = uuidFromString(args.getString(1));
-            UUID characteristicUUID = uuidFromString(args.getString(2));
+            serviceUUID = uuidFromString(args.getString(1));
+            characteristicUUID = uuidFromString(args.getString(2));
             registerNotifyCallback(callbackContext, macAddress, serviceUUID, characteristicUUID);
 
         } else if (action.equals(STOP_NOTIFICATION)) {
 
             String macAddress = args.getString(0);
-            UUID serviceUUID = uuidFromString(args.getString(1));
-            UUID characteristicUUID = uuidFromString(args.getString(2));
+            serviceUUID = uuidFromString(args.getString(1));
+            characteristicUUID = uuidFromString(args.getString(2));
             removeNotifyCallback(callbackContext, macAddress, serviceUUID, characteristicUUID);
 
         } else if (action.equals(IS_ENABLED)) {
@@ -596,7 +607,7 @@ public class BLECentralPlugin extends CordovaPlugin {
 
     }
 
-    private void registerNotifyCallback(CallbackContext callbackContext, String macAddress, UUID serviceUUID, UUID characteristicUUID) {
+    private static void registerNotifyCallback(CallbackContext callbackContext, String macAddress, UUID serviceUUID, UUID characteristicUUID) {
 
         Peripheral peripheral = peripherals.get(macAddress);
         if (peripheral != null) {
@@ -886,7 +897,7 @@ public class BLECentralPlugin extends CordovaPlugin {
             saveLog(new Date().toString() + " NATURAL - start job");
             // Uses a handler to delay the execution of jobFinished().
             final Handler handler = new Handler();
-            handler.postDelayed(new Runnable() {
+            handler.post(new Runnable() {
                 @Override
                 public void run() {
                     Log.d(NATURAL_TAG, "job running");
@@ -911,17 +922,28 @@ public class BLECentralPlugin extends CordovaPlugin {
                         peripherals.put(thermMacAddress, peripheral);
                         device.connectGatt(BLEService.this, true, new Peripheral(device));
 
+                        Log.d(BLECentralPlugin.NATURAL_TAG, "connect gatt called on device");
+                        saveLog(new Date().toString() + " NATURAL - connect gatt called on device");
+
+                        /*
+                         * TODO
+                         * could be a solution for callback issues in the plugin
+                         * need to find out if the device is already connected here
+                         * registerNotifyCallback(callbackContext, thermMacAddress, serviceUUID, characteristicUUID);
+                         * */
+
                         if(callbackContext == null) {
                             Log.d(BLECentralPlugin.NATURAL_TAG, "callbackContext is null");
                             saveLog(new Date().toString() + " NATURAL - callbackContext is null");
+                        } else {
+                            PluginResult result = new PluginResult(PluginResult.Status.);
+                            result.setKeepCallback(true);
+                            callbackContext.sendPluginResult(result);
+
+                            Log.d(BLECentralPlugin.NATURAL_TAG, "plugin result sent");
+                            saveLog(new Date().toString() + " NATURAL - plugin result sent");
                         }
 
-                        PluginResult result = new PluginResult(PluginResult.Status.NO_RESULT);
-                        result.setKeepCallback(true);
-                        callbackContext.sendPluginResult(result);
-
-                        Log.d(BLECentralPlugin.NATURAL_TAG, "connect gatt called on device");
-                        saveLog(new Date().toString() + " NATURAL - connect gatt called on device");
                     } catch (Exception ex) {
                         Log.e(NATURAL_TAG + " ERROR", ex.toString());
                         saveLog(new Date().toString() + " NATURAL ERROR - " + ex.toString());
@@ -963,7 +985,7 @@ public class BLECentralPlugin extends CordovaPlugin {
                     handler.postDelayed(this, minutes * 60 * 1000);
 
                 }
-            }, 5000);
+            });//, 1000);
 
             // Return true as there's more work to be done with this job.
             return true;
