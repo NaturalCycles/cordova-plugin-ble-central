@@ -20,6 +20,8 @@ import android.bluetooth.*;
 import android.os.Build;
 import android.os.Handler;
 import android.util.Base64;
+import android.util.Log;
+
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.LOG;
 import org.apache.cordova.PluginResult;
@@ -282,7 +284,7 @@ public class Peripheral extends BluetoothGattCallback {
                         //characteristicsJSON.put("instanceId", characteristic.getInstanceId());
 
                         characteristicsJSON.put("properties", Helper.decodeProperties(characteristic));
-                            // characteristicsJSON.put("propertiesValue", characteristic.getProperties());
+                        // characteristicsJSON.put("propertiesValue", characteristic.getProperties());
 
                         if (characteristic.getPermissions() > 0) {
                             characteristicsJSON.put("permissions", Helper.decodePermissions(characteristic));
@@ -387,12 +389,21 @@ public class Peripheral extends BluetoothGattCallback {
         super.onCharacteristicChanged(gatt, characteristic);
         LOG.d(TAG, "onCharacteristicChanged " + characteristic);
 
+        Log.d(BLECentralPlugin.NATURAL_TAG, "characteristic changed " + characteristic.getUuid() + " " + characteristic.getValue());
+        BLECentralPlugin.BLEService.saveLog(new Date().toString() + "characteristic changed " + characteristic.getUuid() + " " + characteristic.getValue());
+
         CallbackContext callback = notificationCallbacks.get(generateHashKey(characteristic));
 
         if (callback != null) {
+            Log.d(BLECentralPlugin.NATURAL_TAG, "characteristic changed; callback found");
+            BLECentralPlugin.BLEService.saveLog(new Date().toString() + "characteristic changed; callback found");
+
             PluginResult result = new PluginResult(PluginResult.Status.OK, characteristic.getValue());
             result.setKeepCallback(true);
             callback.sendPluginResult(result);
+        } else {
+            Log.d(BLECentralPlugin.NATURAL_TAG, "characteristic changed; callback not found");
+            BLECentralPlugin.BLEService.saveLog(new Date().toString() + "characteristic changed; callback not found");
         }
     }
 

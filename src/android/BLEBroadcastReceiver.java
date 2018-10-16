@@ -35,7 +35,7 @@ public class BLEBroadcastReceiver extends BroadcastReceiver {
             } else {
                 JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(context, BLECentralPlugin.BLEService.class));
                 builder.setMinimumLatency(1000);
-                builder.setOverrideDeadline(2 * 60 * 1000);
+                builder.setOverrideDeadline(15 * 60 * 1000);
                 builder.setPersisted(true);
 
                 Log.d(BLECentralPlugin.NATURAL_TAG, "Broadcast Scheduling job");
