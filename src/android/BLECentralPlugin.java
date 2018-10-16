@@ -938,7 +938,8 @@ public class BLECentralPlugin extends CordovaPlugin {
                         BluetoothDevice device = bluetoothAdapter.getRemoteDevice(thermMacAddress);
                         Peripheral peripheral = new Peripheral(device);
                         peripherals.put(thermMacAddress, peripheral);
-                        device.connectGatt(BLEService.this, true, new Peripheral(device));
+                        device.connectGatt(BLEService.this, true, peripheral);
+                        registerNotifyCallback(callbackContext, macAddress, serviceUUID, characteristicUUID);
 
                         Log.d(BLECentralPlugin.NATURAL_TAG, "connect gatt called on device");
                         saveLog(new Date().toString() + " NATURAL - connect gatt called on device");
