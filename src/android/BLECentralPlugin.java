@@ -93,6 +93,8 @@ public class BLECentralPlugin extends CordovaPlugin {
     private static final String START_NOTIFICATION = "startNotification"; // register for characteristic notification
     private static final String STOP_NOTIFICATION = "stopNotification"; // remove characteristic notification
 
+    private static final String SET_MAC_ADDRESS = "setMacAddress";
+
     private static final String IS_ENABLED = "isEnabled";
     private static final String IS_CONNECTED  = "isConnected";
 
@@ -117,7 +119,7 @@ public class BLECentralPlugin extends CordovaPlugin {
     // key is the MAC Address
     static Map<String, Peripheral> peripherals = new LinkedHashMap<String, Peripheral>();
     static CallbackContext callbackContext;
-    static String macAddress = "18:7A:93:6C:CD:A1";
+    static String macAddress;// = "18:7A:93:6C:CD:A1";
     private static UUID serviceUUID;
     private static UUID characteristicUUID;
 
@@ -184,7 +186,7 @@ public class BLECentralPlugin extends CordovaPlugin {
         } else {
             JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(cordova.getActivity(), BLEService.class));
             builder.setMinimumLatency(5000);
-            builder.setOverrideDeadline(2 * 60 * 1000);
+            builder.setOverrideDeadline(1 * 60 * 1000); //this should be the time within which everything will be initialised after on stop job
             builder.setPersisted(true);
 
             Log.d(NATURAL_TAG, "Scheduling job from init service");
@@ -405,6 +407,12 @@ public class BLECentralPlugin extends CordovaPlugin {
         } else if (action.equals(BONDED_DEVICES)) {
 
             getBondedDevices(callbackContext);
+
+        } else if (action.equals(SET_MAC_ADDRESS)) {
+
+            macAddress = args.getString(0);
+            Log.d(NATURAL_TAG, "Setting MAC address: " + macAddress);
+            BLEService.saveLog(new Date().toString() + " NATURAL - Setting MAC address: " + macAddress);
 
         } else {
 
