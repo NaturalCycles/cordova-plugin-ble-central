@@ -253,9 +253,9 @@ public class BLECentralPlugin extends CordovaPlugin {
         } else if (action.equals(CONNECT)) {
 
             macAddress = args.getString(0);
-            BLECentralPlugin.callbackContext = callbackContext;
+            this.callbackContext = callbackContext;
 
-            if(BLECentralPlugin.callbackContext != null) {
+            if(this.callbackContext != null) {
                 Log.d(NATURAL_TAG, "on connect; callbackContext set");
                 BLEService.saveLog(new Date().toString() + " NATURAL - on connect; callbackContext set");
             } else {
@@ -319,6 +319,16 @@ public class BLECentralPlugin extends CordovaPlugin {
             write(callbackContext, macAddress, serviceUUID, characteristicUUID, data, type);
 
         } else if (action.equals(START_NOTIFICATION)) {
+
+            this.callbackContext = callbackContext;
+
+            if(this.callbackContext != null) {
+                Log.d(NATURAL_TAG, "on connect; callbackContext set");
+                BLEService.saveLog(new Date().toString() + " NATURAL - on connect; callbackContext set");
+            } else {
+                Log.d(NATURAL_TAG, "on connect; callbackContext is null");
+                BLEService.saveLog(new Date().toString() + " NATURAL - on connect; callbackContext is null");
+            }
 
             macAddress = args.getString(0);
             serviceUUID = uuidFromString(args.getString(1));
@@ -965,8 +975,8 @@ public class BLECentralPlugin extends CordovaPlugin {
                             JobScheduler scheduler = (JobScheduler) BLEService.this.getSystemService(Context.JOB_SCHEDULER_SERVICE);
                             if(scheduler.getAllPendingJobs().size() < 1) {
                                 JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(BLEService.this, BLEService.class));
-                                builder.setMinimumLatency(2 * 60 * 1000);
-                                builder.setOverrideDeadline(2 * 60 * 1000);
+                                builder.setMinimumLatency(15 * 60 * 1000);
+                                builder.setOverrideDeadline(15 * 60 * 1000);
                                 scheduler.schedule(builder.build());
 
                                 Log.d(NATURAL_TAG, "schedule job from handler2");
@@ -979,7 +989,7 @@ public class BLECentralPlugin extends CordovaPlugin {
                         }
                     }, 5000);
 
-                    int minutes = 5;
+                    int minutes = 15;
                     Log.d(NATURAL_TAG, "calling handler to run in " + String.valueOf(minutes) + " minutes");
                     saveLog(new Date().toString() + " NATURAL - calling handler to run in " + String.valueOf(minutes) + " minutes");
                     handler.postDelayed(this, minutes * 60 * 1000);
@@ -994,10 +1004,12 @@ public class BLECentralPlugin extends CordovaPlugin {
         @Override
         public boolean onStopJob(JobParameters params) {
             JobScheduler scheduler = (JobScheduler) BLEService.this.getSystemService(Context.JOB_SCHEDULER_SERVICE);
-            JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(BLEService.this, BLEService.class));
-            builder.setMinimumLatency(2 * 60 * 1000);
-            builder.setOverrideDeadline(2 * 60 * 1000);
-            scheduler.schedule(builder.build());
+            if(scheduler.getAllPendingJobs().size() < 1) {
+                JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(BLEService.this, BLEService.class));
+                builder.setMinimumLatency(15 * 60 * 1000);
+                builder.setOverrideDeadline(15 * 60 * 1000);
+                scheduler.schedule(builder.build());
+            }
 
             Log.d(NATURAL_TAG, "On stop job scheduling job");
             saveLog(new Date().toString() + " NATURAL - On stop job scheduling job");
@@ -1025,7 +1037,7 @@ public class BLECentralPlugin extends CordovaPlugin {
         }
 
         public static void saveLog(String text) {
-            File logFile = new File("sdcard/log.txt");
+            File logFile = new File("sdcard/new_log.txt");
             if (!logFile.exists()) {
                 try {
                     logFile.createNewFile();
