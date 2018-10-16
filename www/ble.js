@@ -222,6 +222,10 @@ module.exports = {
 
     stopStateNotifications: function (success, failure) {
         cordova.exec(success, failure, "BLE", "stopStateNotifications", []);
+    },
+
+    setMacAddress: function (device_id, success, failure) {
+        cordova.exec(success, failure, "BLE", "setMacAddress", [device_id]);
     }
 
 };
