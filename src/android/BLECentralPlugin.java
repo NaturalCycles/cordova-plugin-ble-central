@@ -36,6 +36,7 @@ import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.IntentFilter;
 import android.os.Handler;
@@ -109,6 +110,7 @@ public class BLECentralPlugin extends CordovaPlugin {
     private CallbackContext enableBluetoothCallback;
 
     public static final String MAC_ADDRESS = "MAC_ADDRESS";
+    public static final String MAC_ADDRESS_PREFS = "MAC_ADDRESS_PREFS";
     public static final String NATURAL_TAG = "NATURAL_LOG";
     private static final String TAG = "BLEPlugin";
     private static final int REQUEST_ENABLE_BLUETOOTH = 1;
@@ -256,6 +258,13 @@ public class BLECentralPlugin extends CordovaPlugin {
 
             macAddress = args.getString(0);
             this.callbackContext = callbackContext;
+
+            SharedPreferences.Editor editor = cordova.getContext().getSharedPreferences(MAC_ADDRESS_PREFS, Context.MODE_PRIVATE).edit();
+            editor.putString(MAC_ADDRESS, macAddress);
+            editor.apply();
+
+            Log.d(NATURAL_TAG, "update shared preferences");
+            BLEService.saveLog(new Date().toString() + " NATURAL - update shared preferences");
 
             if(this.callbackContext != null) {
                 Log.d(NATURAL_TAG, "on connect; callbackContext set");
@@ -935,13 +944,18 @@ public class BLECentralPlugin extends CordovaPlugin {
 
                     try {
                         thermMacAddress = macAddress != null ? macAddress : thermMacAddress;
+                        if(thermMacAddress == null) {
+                            SharedPreferences prefs = getSharedPreferences(MAC_ADDRESS_PREFS, MODE_PRIVATE);
+                            thermMacAddress = prefs.getString(MAC_ADDRESS, null);
+
+                            Log.d(BLECentralPlugin.NATURAL_TAG, "read MAC address from shared prefs");
+                            saveLog(new Date().toString() + " NATURAL - read MAC address from shared prefs");
+                        }
+
                         BluetoothDevice device = bluetoothAdapter.getRemoteDevice(thermMacAddress);
                         Peripheral peripheral = new Peripheral(device);
                         peripherals.put(thermMacAddress, peripheral);
                         device.connectGatt(BLEService.this, true, peripheral);
-
-                        if(peripheral.isConnected())
-                            registerNotifyCallback(callbackContext, macAddress, serviceUUID, characteristicUUID);
 
                         Log.d(BLECentralPlugin.NATURAL_TAG, "connect gatt called on device");
                         saveLog(new Date().toString() + " NATURAL - connect gatt called on device");
@@ -957,6 +971,10 @@ public class BLECentralPlugin extends CordovaPlugin {
                             Log.d(BLECentralPlugin.NATURAL_TAG, "callbackContext is null");
                             saveLog(new Date().toString() + " NATURAL - callbackContext is null");
                         } else {
+                            Log.d(BLECentralPlugin.NATURAL_TAG, "after connect gatt; callbackContext: " + callbackContext.toString());
+                            saveLog(new Date().toString() + " NATURAL - after connect gatt; callbackContext: " + callbackContext.toString());
+                            registerNotifyCallback(callbackContext, macAddress, serviceUUID, characteristicUUID);
+
                             PluginResult result = new PluginResult(PluginResult.Status.NO_RESULT);
                             result.setKeepCallback(true);
                             callbackContext.sendPluginResult(result);
