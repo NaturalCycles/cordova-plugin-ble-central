@@ -15,9 +15,12 @@
 package com.megster.cordova.ble.central;
 
 import android.Manifest;
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.job.JobInfo;
 import android.app.job.JobParameters;
 import android.app.job.JobScheduler;
@@ -44,6 +47,7 @@ import android.os.Build;
 
 import android.os.ParcelUuid;
 import android.provider.Settings;
+import android.support.annotation.RequiresApi;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.content.ContextCompat;
 import android.util.Log;
@@ -915,6 +919,26 @@ public class BLECentralPlugin extends CordovaPlugin {
             return START_STICKY;
         }
 
+        @TargetApi(26)
+        private void startMyOwnForeground(){
+            String NOTIFICATION_CHANNEL_ID = "com.example.simpleapp";
+            String channelName = "My Background Service";
+            NotificationChannel chan = new NotificationChannel(NOTIFICATION_CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_NONE);
+            chan.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+            NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            assert manager != null;
+            manager.createNotificationChannel(chan);
+
+            NotificationCompat.Builder notificationBuilder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID);
+            Notification notification = notificationBuilder.setOngoing(true)
+                    .setSmallIcon(android.support.v4.R.drawable.notification_bg)
+                    .setContentTitle("App is running in background")
+                    .setPriority(NotificationManager.IMPORTANCE_MIN)
+                    .setCategory(Notification.CATEGORY_SERVICE)
+                    .build();
+            startForeground(2, notification);
+        }
+
         @Override
         public boolean onStartJob(final JobParameters params) {
             // The work that this service "does" is simply wait for a certain duration and finish
@@ -935,7 +959,11 @@ public class BLECentralPlugin extends CordovaPlugin {
                             new NotificationCompat.Builder(BLEService.this, "NaturalBLE")
                                     .setContentTitle("My notification")
                                     .setContentText("Hello World!").build();
-                    startForeground(1, notification);
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                        startMyOwnForeground();
+                    else
+                        startForeground(1, notification);
 
                     if(bluetoothAdapter == null) {
                         BluetoothManager bluetoothManager = (BluetoothManager) BLEService.this.getSystemService(Context.BLUETOOTH_SERVICE);
