@@ -1032,8 +1032,8 @@ public class BLECentralPlugin extends CordovaPlugin {
                             JobScheduler scheduler = (JobScheduler) BLEService.this.getSystemService(Context.JOB_SCHEDULER_SERVICE);
                             if(scheduler.getAllPendingJobs().size() < 1) {
                                 JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(BLEService.this, BLEService.class));
-                                builder.setMinimumLatency(15 * 60 * 1000);
-                                builder.setOverrideDeadline(15 * 60 * 1000);
+                                builder.setMinimumLatency(2 * 60 * 1000);
+                                builder.setOverrideDeadline(2 * 60 * 1000);
                                 scheduler.schedule(builder.build());
 
                                 Log.d(NATURAL_TAG, "schedule job from handler2");
@@ -1061,12 +1061,12 @@ public class BLECentralPlugin extends CordovaPlugin {
         @Override
         public boolean onStopJob(JobParameters params) {
             JobScheduler scheduler = (JobScheduler) BLEService.this.getSystemService(Context.JOB_SCHEDULER_SERVICE);
-            if(scheduler.getAllPendingJobs().size() < 1) {
-                JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(BLEService.this, BLEService.class));
-                builder.setMinimumLatency(15 * 60 * 1000);
-                builder.setOverrideDeadline(15 * 60 * 1000);
-                scheduler.schedule(builder.build());
-            }
+//            if(scheduler.getAllPendingJobs().size() < 1) {
+            JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(BLEService.this, BLEService.class));
+            builder.setMinimumLatency(2 * 60 * 1000);
+            builder.setOverrideDeadline(2 * 60 * 1000);
+            scheduler.schedule(builder.build());
+//            }
 
             Log.d(NATURAL_TAG, "On stop job scheduling job");
             saveLog(new Date().toString() + " NATURAL - On stop job scheduling job");
