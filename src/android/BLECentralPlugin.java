@@ -17,7 +17,6 @@ package com.megster.cordova.ble.central;
 import android.Manifest;
 import android.annotation.TargetApi;
 import android.app.Activity;
-import android.app.ActivityManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -27,14 +26,8 @@ import android.app.job.JobScheduler;
 import android.app.job.JobService;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothManager;
-import android.bluetooth.le.ScanCallback;
-import android.bluetooth.le.ScanFilter;
-import android.bluetooth.le.ScanRecord;
-import android.bluetooth.le.ScanResult;
-import android.bluetooth.le.ScanSettings;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -45,11 +38,9 @@ import android.content.IntentFilter;
 import android.os.Handler;
 import android.os.Build;
 
-import android.os.ParcelUuid;
 import android.provider.Settings;
-import android.support.annotation.RequiresApi;
 import android.support.v4.app.NotificationCompat;
-import android.support.v4.content.ContextCompat;
+import android.support.v4.app.NotificationManagerCompat;
 import android.util.Log;
 
 import org.apache.cordova.CallbackContext;
@@ -73,7 +64,7 @@ import java.util.*;
 import static android.bluetooth.BluetoothDevice.DEVICE_TYPE_DUAL;
 import static android.bluetooth.BluetoothDevice.DEVICE_TYPE_LE;
 
-public class BLECentralPlugin extends CordovaPlugin {
+public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.LeScanCallback {
     // actions
     private static final String SCAN = "scan";
     private static final String START_SCAN = "startScan";
@@ -98,8 +89,6 @@ public class BLECentralPlugin extends CordovaPlugin {
     private static final String START_NOTIFICATION = "startNotification"; // register for characteristic notification
     private static final String STOP_NOTIFICATION = "stopNotification"; // remove characteristic notification
 
-    private static final String SET_MAC_ADDRESS = "setMacAddress";
-
     private static final String IS_ENABLED = "isEnabled";
     private static final String IS_CONNECTED  = "isConnected";
 
@@ -116,18 +105,15 @@ public class BLECentralPlugin extends CordovaPlugin {
     public static final String MAC_ADDRESS = "MAC_ADDRESS";
     public static final String MAC_ADDRESS_PREFS = "MAC_ADDRESS_PREFS";
     public static final String NATURAL_TAG = "NATURAL_LOG";
+
     private static final String TAG = "BLEPlugin";
     private static final int REQUEST_ENABLE_BLUETOOTH = 1;
 
     private static BluetoothAdapter bluetoothAdapter;
-    private static BLEBroadcastReceiver mReceiver;
 
     // key is the MAC Address
     static Map<String, Peripheral> peripherals = new LinkedHashMap<String, Peripheral>();
-    static CallbackContext callbackContext;
-    static String macAddress;// = "18:7A:93:6C:CD:A1";
-    private static UUID serviceUUID;
-    private static UUID characteristicUUID;
+    static String macAddress;
 
     // scan options
     boolean reportDuplicates = false;
@@ -138,7 +124,7 @@ public class BLECentralPlugin extends CordovaPlugin {
     private static final int REQUEST_ACCESS_COARSE_LOCATION = 2;
     private static final int REQUEST_EXTERNAL_STORAGE = 3;
     private CallbackContext permissionCallback;
-    private static UUID[] serviceUUIDs;
+    private UUID[] serviceUUIDs;
     private int scanSeconds;
 
     // Bluetooth state notification
@@ -152,10 +138,11 @@ public class BLECentralPlugin extends CordovaPlugin {
     }};
 
     public void onDestroy() {
-        Log.d(NATURAL_TAG, "BLE central plugin on destroy");
-//        cordova.getActivity().stopService(new Intent(cordova.getActivity(), BLEService.class));
         removeStateListener();
-        super.onDestroy();
+    }
+
+    public void onReset() {
+        removeStateListener();
     }
 
     @Override
@@ -167,22 +154,12 @@ public class BLECentralPlugin extends CordovaPlugin {
 
     private void initService() {
         Log.d(NATURAL_TAG, "in on start");
-        if(!isBLEServiceRunning(BLEService.class)) {
-            Log.d(NATURAL_TAG, "Starting service");
-            BLEService.saveLog(new Date().toString() + " NATURAL - starting service");
+        Log.d(NATURAL_TAG, "Starting service");
+        BLEService.saveLog(new Date().toString() + " NATURAL - starting service");
 
-            Intent serviceIntent = new Intent(cordova.getActivity(), BLEService.class);
-            serviceIntent.putExtra(MAC_ADDRESS, macAddress);
-//            ContextCompat.startForegroundService(cordova.getActivity(), serviceIntent);
-            cordova.getActivity().startService(serviceIntent);
-        } else {
-            Log.d(NATURAL_TAG, "Service already started - skipping start");
-            BLEService.saveLog(new Date().toString() + " NATURAL - skipping start service");
-        }
-
-        IntentFilter filter = new IntentFilter("com.megster.cordova.ble.central.BLERestart");
-        mReceiver = new BLEBroadcastReceiver();
-        cordova.getActivity().registerReceiver(mReceiver, filter);
+        Intent serviceIntent = new Intent(cordova.getActivity(), BLEService.class);
+        serviceIntent.putExtra(MAC_ADDRESS, macAddress);
+        cordova.getActivity().startService(serviceIntent);
 
         JobScheduler tm = (JobScheduler) cordova.getActivity().getSystemService(Context.JOB_SCHEDULER_SERVICE);
         Log.d(NATURAL_TAG, "number of pending jobs: " + tm.getAllPendingJobs().size());
@@ -200,24 +177,9 @@ public class BLECentralPlugin extends CordovaPlugin {
         }
     }
 
-    private boolean isBLEServiceRunning(Class<?> serviceClass) {
-        ActivityManager manager = (ActivityManager) cordova.getActivity().getSystemService(Context.ACTIVITY_SERVICE);
-        for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
-            if (serviceClass.getName().equals(service.service.getClassName())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public void onReset() {
-        removeStateListener();
-    }
-
     @Override
     public boolean execute(String action, CordovaArgs args, CallbackContext callbackContext) throws JSONException {
         LOG.d(TAG, "action = " + action);
-        LOG.d(TAG, "NATURAL action = " + action);
 
         if (bluetoothAdapter == null) {
             Activity activity = cordova.getActivity();
@@ -238,20 +200,20 @@ public class BLECentralPlugin extends CordovaPlugin {
 
         if (action.equals(SCAN)) {
 
-            serviceUUIDs = parseServiceUUIDList(args.getJSONArray(0));
+            UUID[] serviceUUIDs = parseServiceUUIDList(args.getJSONArray(0));
             int scanSeconds = args.getInt(1);
             resetScanOptions();
             findLowEnergyDevices(callbackContext, serviceUUIDs, scanSeconds);
 
         } else if (action.equals(START_SCAN)) {
 
-            serviceUUIDs = parseServiceUUIDList(args.getJSONArray(0));
+            UUID[] serviceUUIDs = parseServiceUUIDList(args.getJSONArray(0));
             resetScanOptions();
             findLowEnergyDevices(callbackContext, serviceUUIDs, -1);
 
         } else if (action.equals(STOP_SCAN)) {
 
-            bluetoothAdapter.getBluetoothLeScanner().stopScan(scanCallback);
+            bluetoothAdapter.stopLeScan(this);
             callbackContext.success();
 
         } else if (action.equals(LIST)) {
@@ -261,23 +223,6 @@ public class BLECentralPlugin extends CordovaPlugin {
         } else if (action.equals(CONNECT)) {
 
             macAddress = args.getString(0);
-            this.callbackContext = callbackContext;
-
-            SharedPreferences.Editor editor = cordova.getContext().getSharedPreferences(MAC_ADDRESS_PREFS, Context.MODE_PRIVATE).edit();
-            editor.putString(MAC_ADDRESS, macAddress);
-            editor.apply();
-
-            Log.d(NATURAL_TAG, "update shared preferences");
-            BLEService.saveLog(new Date().toString() + " NATURAL - update shared preferences");
-
-            if(this.callbackContext != null) {
-                Log.d(NATURAL_TAG, "on connect; callbackContext set");
-                BLEService.saveLog(new Date().toString() + " NATURAL - on connect; callbackContext set");
-            } else {
-                Log.d(NATURAL_TAG, "on connect; callbackContext is null");
-                BLEService.saveLog(new Date().toString() + " NATURAL - on connect; callbackContext is null");
-            }
-
             connect(callbackContext, macAddress);
 
         } else if (action.equals(AUTOCONNECT)) {
@@ -287,7 +232,7 @@ public class BLECentralPlugin extends CordovaPlugin {
 
         } else if (action.equals(DISCONNECT)) {
 
-            macAddress = args.getString(0);
+            String macAddress = args.getString(0);
             disconnect(callbackContext, macAddress);
 
         } else if (action.equals(REQUEST_MTU)) {
@@ -335,26 +280,16 @@ public class BLECentralPlugin extends CordovaPlugin {
 
         } else if (action.equals(START_NOTIFICATION)) {
 
-            this.callbackContext = callbackContext;
-
-            if(this.callbackContext != null) {
-                Log.d(NATURAL_TAG, "on connect; callbackContext set");
-                BLEService.saveLog(new Date().toString() + " NATURAL - on connect; callbackContext set");
-            } else {
-                Log.d(NATURAL_TAG, "on connect; callbackContext is null");
-                BLEService.saveLog(new Date().toString() + " NATURAL - on connect; callbackContext is null");
-            }
-
-            macAddress = args.getString(0);
-            serviceUUID = uuidFromString(args.getString(1));
-            characteristicUUID = uuidFromString(args.getString(2));
+            String macAddress = args.getString(0);
+            UUID serviceUUID = uuidFromString(args.getString(1));
+            UUID characteristicUUID = uuidFromString(args.getString(2));
             registerNotifyCallback(callbackContext, macAddress, serviceUUID, characteristicUUID);
 
         } else if (action.equals(STOP_NOTIFICATION)) {
 
             String macAddress = args.getString(0);
-            serviceUUID = uuidFromString(args.getString(1));
-            characteristicUUID = uuidFromString(args.getString(2));
+            UUID serviceUUID = uuidFromString(args.getString(1));
+            UUID characteristicUUID = uuidFromString(args.getString(2));
             removeNotifyCallback(callbackContext, macAddress, serviceUUID, characteristicUUID);
 
         } else if (action.equals(IS_ENABLED)) {
@@ -410,7 +345,7 @@ public class BLECentralPlugin extends CordovaPlugin {
             callbackContext.success();
 
         } else if (action.equals(START_SCAN_WITH_OPTIONS)) {
-            serviceUUIDs = parseServiceUUIDList(args.getJSONArray(0));
+            UUID[] serviceUUIDs = parseServiceUUIDList(args.getJSONArray(0));
             JSONObject options = args.getJSONObject(1);
 
             resetScanOptions();
@@ -420,12 +355,6 @@ public class BLECentralPlugin extends CordovaPlugin {
         } else if (action.equals(BONDED_DEVICES)) {
 
             getBondedDevices(callbackContext);
-
-        } else if (action.equals(SET_MAC_ADDRESS)) {
-
-            macAddress = args.getString(0);
-            Log.d(NATURAL_TAG, "Setting MAC address: " + macAddress);
-            BLEService.saveLog(new Date().toString() + " NATURAL - Setting MAC address: " + macAddress);
 
         } else {
 
@@ -513,8 +442,8 @@ public class BLECentralPlugin extends CordovaPlugin {
     }
 
     private void connect(CallbackContext callbackContext, String macAddress) {
-        if (!peripherals.containsKey(macAddress) && bluetoothAdapter.checkBluetoothAddress(macAddress)) {
-            BluetoothDevice device = bluetoothAdapter.getRemoteDevice(macAddress);
+        if (!peripherals.containsKey(macAddress) && BLECentralPlugin.this.bluetoothAdapter.checkBluetoothAddress(macAddress)) {
+            BluetoothDevice device = BLECentralPlugin.this.bluetoothAdapter.getRemoteDevice(macAddress);
             Peripheral peripheral = new Peripheral(device);
             peripherals.put(macAddress, peripheral);
         }
@@ -638,7 +567,7 @@ public class BLECentralPlugin extends CordovaPlugin {
 
     }
 
-    private static void registerNotifyCallback(CallbackContext callbackContext, String macAddress, UUID serviceUUID, UUID characteristicUUID) {
+    private void registerNotifyCallback(CallbackContext callbackContext, String macAddress, UUID serviceUUID, UUID characteristicUUID) {
 
         Peripheral peripheral = peripherals.get(macAddress);
         if (peripheral != null) {
@@ -727,19 +656,9 @@ public class BLECentralPlugin extends CordovaPlugin {
         discoverCallback = callbackContext;
 
         if (serviceUUIDs != null && serviceUUIDs.length > 0) {
-            List<ScanFilter> filters = new ArrayList();
-            ScanFilter scanFilter = new ScanFilter.Builder()
-                    .setServiceUuid(new ParcelUuid(serviceUUIDs[0]))
-                    .build();
-            filters.add(scanFilter);
-
-            ScanSettings settings = new ScanSettings.Builder()
-                    .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
-                    .build();
-
-            bluetoothAdapter.getBluetoothLeScanner().startScan(filters, settings, scanCallback);
+            bluetoothAdapter.startLeScan(serviceUUIDs, this);
         } else {
-            bluetoothAdapter.getBluetoothLeScanner().startScan(scanCallback);
+            bluetoothAdapter.startLeScan(this);
         }
 
         if (scanSeconds > 0) {
@@ -748,7 +667,7 @@ public class BLECentralPlugin extends CordovaPlugin {
                 @Override
                 public void run() {
                     LOG.d(TAG, "Stopping Scan");
-                    bluetoothAdapter.getBluetoothLeScanner().stopScan(scanCallback);
+                    BLECentralPlugin.this.bluetoothAdapter.stopLeScan(BLECentralPlugin.this);
                 }
             }, scanSeconds * 1000);
         }
@@ -784,59 +703,33 @@ public class BLECentralPlugin extends CordovaPlugin {
         callbackContext.sendPluginResult(result);
     }
 
-    private ScanCallback scanCallback = new ScanCallback() {
-        @Override
-        public void onScanResult(int callbackType, ScanResult result) {
-            super.onScanResult(callbackType, result);
+    @Override
+    public void onLeScan(BluetoothDevice device, int rssi, byte[] scanRecord) {
 
-            Log.d(NATURAL_TAG, "on scan result: " + result.toString());
-            BLEService.saveLog( new Date().toString() + " NATURAL - on scan result: " + result.toString());
+        String address = device.getAddress();
+        boolean alreadyReported = peripherals.containsKey(address) && !peripherals.get(address).isUnscanned();
 
-            BluetoothDevice device = result.getDevice();
-            int rssi = result.getRssi();
-            ScanRecord scanRecord = result.getScanRecord();
+        if (!alreadyReported) {
 
-            String address = device.getAddress();
-            boolean alreadyReported = peripherals.containsKey(address) && !peripherals.get(address).isUnscanned();
+            Peripheral peripheral = new Peripheral(device, rssi, scanRecord);
+            peripherals.put(device.getAddress(), peripheral);
 
-            if (!alreadyReported) {
+            if (discoverCallback != null) {
+                PluginResult result = new PluginResult(PluginResult.Status.OK, peripheral.asJSONObject());
+                result.setKeepCallback(true);
+                discoverCallback.sendPluginResult(result);
+            }
 
-                Peripheral peripheral = new Peripheral(device, rssi, scanRecord.getBytes());
-                peripherals.put(device.getAddress(), peripheral);
-
-                if (discoverCallback != null) {
-                    PluginResult pluginResult = new PluginResult(PluginResult.Status.OK, peripheral.asJSONObject());
-                    pluginResult.setKeepCallback(true);
-                    discoverCallback.sendPluginResult(pluginResult);
-                }
-
-            } else {
-                Peripheral peripheral = peripherals.get(address);
-                peripheral.update(rssi, scanRecord.getBytes());
-                if (reportDuplicates && discoverCallback != null) {
-                    PluginResult pluginResult = new PluginResult(PluginResult.Status.OK, peripheral.asJSONObject());
-                    pluginResult.setKeepCallback(true);
-                    discoverCallback.sendPluginResult(pluginResult);
-                }
+        } else {
+            Peripheral peripheral = peripherals.get(address);
+            peripheral.update(rssi, scanRecord);
+            if (reportDuplicates && discoverCallback != null) {
+                PluginResult result = new PluginResult(PluginResult.Status.OK, peripheral.asJSONObject());
+                result.setKeepCallback(true);
+                discoverCallback.sendPluginResult(result);
             }
         }
-
-        @Override
-        public void onBatchScanResults(List<ScanResult> results) {
-            super.onBatchScanResults(results);
-
-            Log.d(NATURAL_TAG, "onBatchScanResults");
-            BLEService.saveLog( new Date().toString() + " NATURAL - onBatchScanResults");
-        }
-
-        @Override
-        public void onScanFailed(int errorCode) {
-            super.onScanFailed(errorCode);
-
-            Log.d(NATURAL_TAG, "onScanFailed; errorCode: " + String.valueOf(errorCode));
-            BLEService.saveLog( new Date().toString() + " NATURAL - onScanFailed; errorCode: " + String.valueOf(errorCode));
-        }
-    };
+    }
 
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
@@ -873,9 +766,9 @@ public class BLECentralPlugin extends CordovaPlugin {
             case REQUEST_ACCESS_COARSE_LOCATION:
                 LOG.d(TAG, "User granted Coarse Location Access");
                 findLowEnergyDevices(permissionCallback, serviceUUIDs, scanSeconds);
-                permissionCallback = null;
-                serviceUUIDs = null;
-                scanSeconds = -1;
+                this.permissionCallback = null;
+                this.serviceUUIDs = null;
+                this.scanSeconds = -1;
                 break;
         }
     }
@@ -905,15 +798,6 @@ public class BLECentralPlugin extends CordovaPlugin {
                 saveLog( new Date().toString() + " NATURAL - on start command");
             }
 
-            try {
-                IntentFilter filter = new IntentFilter("com.megster.cordova.ble.central.BLERestart");
-                mReceiver = new BLEBroadcastReceiver();
-                registerReceiver(mReceiver, filter);
-            } catch (Exception ex) {
-                Log.d(NATURAL_TAG + " ERROR", ex.toString());
-                saveLog(new Date().toString() + " NATURAL ERROR - " + ex.toString());
-            }
-
             Log.d(NATURAL_TAG, "on start command");
             saveLog( new Date().toString() + " NATURAL - on start command");
             return START_STICKY;
@@ -923,8 +807,8 @@ public class BLECentralPlugin extends CordovaPlugin {
         private void startMyOwnForeground(){
             String NOTIFICATION_CHANNEL_ID = "com.example.simpleapp";
             String channelName = "My Background Service";
-            NotificationChannel chan = new NotificationChannel(NOTIFICATION_CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_NONE);
-            chan.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+            NotificationChannel chan = new NotificationChannel(NOTIFICATION_CHANNEL_ID, channelName, NotificationManagerCompat.IMPORTANCE_NONE);
+            chan.setLockscreenVisibility(NotificationCompat.VISIBILITY_PRIVATE);
             NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
             assert manager != null;
             manager.createNotificationChannel(chan);
@@ -941,9 +825,6 @@ public class BLECentralPlugin extends CordovaPlugin {
 
         @Override
         public boolean onStartJob(final JobParameters params) {
-            // The work that this service "does" is simply wait for a certain duration and finish
-            // the job (on another thread).
-
             Log.d(NATURAL_TAG, "start job");
             saveLog(new Date().toString() + " NATURAL - start job");
             // Uses a handler to delay the execution of jobFinished().
@@ -953,7 +834,6 @@ public class BLECentralPlugin extends CordovaPlugin {
                 public void run() {
                     Log.d(NATURAL_TAG, "job running");
                     saveLog(new Date().toString() + " NATURAL - job running");
-//                jobFinished(params, false);
 
                     Notification notification =
                             new NotificationCompat.Builder(BLEService.this, "NaturalBLE")
@@ -971,7 +851,6 @@ public class BLECentralPlugin extends CordovaPlugin {
                     }
 
                     try {
-                        thermMacAddress = macAddress != null ? macAddress : thermMacAddress;
                         if(thermMacAddress == null) {
                             SharedPreferences prefs = getSharedPreferences(MAC_ADDRESS_PREFS, MODE_PRIVATE);
                             thermMacAddress = prefs.getString(MAC_ADDRESS, null);
@@ -988,29 +867,6 @@ public class BLECentralPlugin extends CordovaPlugin {
                         Log.d(BLECentralPlugin.NATURAL_TAG, "connect gatt called on device");
                         saveLog(new Date().toString() + " NATURAL - connect gatt called on device");
 
-                        /*
-                         * TODO
-                         * could be a solution for callback issues in the plugin
-                         * need to find out if the device is already connected here
-                         * registerNotifyCallback(callbackContext, thermMacAddress, serviceUUID, characteristicUUID);
-                         * */
-
-                        if(callbackContext == null) {
-                            Log.d(BLECentralPlugin.NATURAL_TAG, "callbackContext is null");
-                            saveLog(new Date().toString() + " NATURAL - callbackContext is null");
-                        } else {
-                            Log.d(BLECentralPlugin.NATURAL_TAG, "after connect gatt; callbackContext: " + callbackContext.toString());
-                            saveLog(new Date().toString() + " NATURAL - after connect gatt; callbackContext: " + callbackContext.toString());
-                            registerNotifyCallback(callbackContext, macAddress, serviceUUID, characteristicUUID);
-
-                            PluginResult result = new PluginResult(PluginResult.Status.NO_RESULT);
-                            result.setKeepCallback(true);
-                            callbackContext.sendPluginResult(result);
-
-                            Log.d(BLECentralPlugin.NATURAL_TAG, "plugin result sent");
-                            saveLog(new Date().toString() + " NATURAL - plugin result sent");
-                        }
-
                     } catch (Exception ex) {
                         Log.e(NATURAL_TAG + " ERROR", ex.toString());
                         saveLog(new Date().toString() + " NATURAL ERROR - " + ex.toString());
@@ -1023,9 +879,7 @@ public class BLECentralPlugin extends CordovaPlugin {
                             Log.d(NATURAL_TAG, "before stop service");
                             saveLog(new Date().toString() + " NATURAL - before stop service");
 
-                            stopForeground(true);
-//                            stopSelf();
-//                            stopService(foregroundIntent);
+//                            stopForeground(true);
                             Log.d(NATURAL_TAG, "service stopped");
                             saveLog(new Date().toString() + " NATURAL - service stopped");
 
@@ -1052,7 +906,7 @@ public class BLECentralPlugin extends CordovaPlugin {
                     handler.postDelayed(this, minutes * 60 * 1000);
 
                 }
-            });//, 1000);
+            });
 
             // Return true as there's more work to be done with this job.
             return true;
@@ -1061,12 +915,12 @@ public class BLECentralPlugin extends CordovaPlugin {
         @Override
         public boolean onStopJob(JobParameters params) {
             JobScheduler scheduler = (JobScheduler) BLEService.this.getSystemService(Context.JOB_SCHEDULER_SERVICE);
-//            if(scheduler.getAllPendingJobs().size() < 1) {
-            JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(BLEService.this, BLEService.class));
-            builder.setMinimumLatency(2 * 60 * 1000);
-            builder.setOverrideDeadline(2 * 60 * 1000);
-            scheduler.schedule(builder.build());
-//            }
+            if(scheduler.getAllPendingJobs().size() < 2) {
+                JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(BLEService.this, BLEService.class));
+                builder.setMinimumLatency(2 * 60 * 1000);
+                builder.setOverrideDeadline(2 * 60 * 1000);
+                scheduler.schedule(builder.build());
+            }
 
             Log.d(NATURAL_TAG, "On stop job scheduling job");
             saveLog(new Date().toString() + " NATURAL - On stop job scheduling job");
@@ -1084,12 +938,6 @@ public class BLECentralPlugin extends CordovaPlugin {
             broadcastIntent.putExtra(MAC_ADDRESS, thermMacAddress);
             sendBroadcast(broadcastIntent);
 
-            try {
-                unregisterReceiver(mReceiver);
-            } catch(Exception ex) {
-                Log.e(NATURAL_TAG + " ERROR", ex.toString());
-                saveLog("NATURAL ERROR - " + ex.toString());
-            }
             super.onDestroy();
         }
 
