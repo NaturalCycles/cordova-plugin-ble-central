@@ -20,6 +20,8 @@ import android.bluetooth.*;
 import android.os.Build;
 import android.os.Handler;
 import android.util.Base64;
+import android.util.Log;
+
 import org.apache.cordova.CallbackContext;
 import org.apache.cordova.LOG;
 import org.apache.cordova.PluginResult;
@@ -61,7 +63,10 @@ public class Peripheral extends BluetoothGattCallback {
     private CallbackContext writeCallback;
     private Activity currentActivity;
 
+    private CallbackContext mCallbackContext;
+
     private Map<String, CallbackContext> notificationCallbacks = new HashMap<String, CallbackContext>();
+    private List<BLECentralPlugin.ConnectionStateListener> listeners = new ArrayList<BLECentralPlugin.ConnectionStateListener>();
 
     public Peripheral(BluetoothDevice device) {
 
@@ -338,6 +343,18 @@ public class Peripheral extends BluetoothGattCallback {
     public void onServicesDiscovered(BluetoothGatt gatt, int status) {
         super.onServicesDiscovered(gatt, status);
 
+        Log.d(TAG, "on services discovered");
+
+        try {
+            registerNotifyCallback(
+                    mCallbackContext,
+                    UUID.fromString("0000fff0-0000-1000-8000-00805f9b34fb"),
+                    UUID.fromString("0000fff1-0000-1000-8000-00805f9b34fb")
+            );
+        } catch (Exception ex) {
+            Log.e(TAG + "-error", ex.toString());
+        }
+
         // refreshCallback is a kludge for refreshing services, if it exists, it temporarily
         // overrides the connect callback. Unfortunately this edge case make the code confusing.
 
@@ -369,10 +386,15 @@ public class Peripheral extends BluetoothGattCallback {
 
         if (newState == BluetoothGatt.STATE_CONNECTED) {
             LOG.d(TAG, "onConnectionStateChange CONNECTED");
+
+            for(BLECentralPlugin.ConnectionStateListener l: listeners) {
+                LOG.d(TAG, "onConnectionStateChange calling listener");
+                l.peripheralConnected();
+            }
+
             connected = true;
             connecting = false;
             gatt.discoverServices();
-
         } else {  // Disconnected
             LOG.d(TAG, "onConnectionStateChange DISCONNECTED");
             connected = false;
@@ -387,6 +409,8 @@ public class Peripheral extends BluetoothGattCallback {
         super.onCharacteristicChanged(gatt, characteristic);
         LOG.d(TAG, "onCharacteristicChanged " + characteristic);
 
+        onResult(characteristic.getValue(), characteristic);
+
         CallbackContext callback = notificationCallbacks.get(generateHashKey(characteristic));
 
         if (callback != null) {
@@ -394,6 +418,119 @@ public class Peripheral extends BluetoothGattCallback {
             result.setKeepCallback(true);
             callback.sendPluginResult(result);
         }
+    }
+
+    private void onResult(byte[] bytes, BluetoothGattCharacteristic characteristic) {
+        int[] data = new int[bytes.length];
+        for (int i=0; i<data.length; i++) {
+            data[i] = bytes[i] & 0xff;
+        }
+        StringBuilder stringBuilder = new StringBuilder();
+        String[] hexData = new String[bytes.length];
+        for(int i=0; i<hexData.length; i++) {
+            byte b = bytes[i];
+            stringBuilder.append(String.format("%02X ", b));
+            hexData[i] = (String.format("%02X ", b));
+        }
+
+        LOG.d(TAG, "onCharacteristicChanged get value as string " + String.valueOf(Arrays.toString(data)));
+        LOG.d(TAG, "onCharacteristicChanged get value in HEX " + String.valueOf(stringBuilder.toString()));
+
+        String cmd = hexData[4];
+        LOG.d(TAG, "onCharacteristicChanged cmd " + cmd);
+
+        switch (cmd.trim().toLowerCase()) {
+            case "a1":
+                createResponseToA1(characteristic);
+                break;
+            case "a3":
+                createResponseToA3(data[6], data[7]);
+                break;
+            default:
+                handleTemperatureReceived(data);
+        }
+    }
+
+    private void handleTemperatureReceived(int[] data) {
+        int year = data[0];
+        int month = data[1];
+        int day = data[2];
+        int hour = data[3];
+        int minutes = data[4];
+        int temp1 = data[5];
+        int temp2 = data[6];
+        int battery = (data[7] + 100) / 100;
+
+        LOG.d(TAG, "handleTemperatureReceived year " + year);
+        LOG.d(TAG, "handleTemperatureReceived month " + month);
+        LOG.d(TAG, "handleTemperatureReceived day " + day);
+        LOG.d(TAG, "handleTemperatureReceived hour " + hour);
+        LOG.d(TAG, "handleTemperatureReceived minutes " + minutes);
+        LOG.d(TAG, "handleTemperatureReceived temp1 " + temp1);
+        LOG.d(TAG, "handleTemperatureReceived temp2 " + temp2);
+        LOG.d(TAG, "handleTemperatureReceived battery " + battery);
+
+        BLECentralPlugin.BLEService.saveLog(new Date().toString() + " NATURAL - received temperature: " + temp1 + "." + temp2);
+
+        for(BLECentralPlugin.ConnectionStateListener l: listeners) {
+            LOG.d(TAG, "handleTemperatureReceived calling listener");
+            l.temperatureReceived(String.valueOf(temp1) + "." + String.valueOf(temp2));
+        }
+    }
+
+    private void createResponseToA1(BluetoothGattCharacteristic characteristic) {
+        LOG.d(TAG, "Create response to A1");
+
+        Calendar date = new GregorianCalendar();
+        byte[] response = new byte[12];
+        // '_' marks constant values
+        response[0] = (byte) (0x4d & 0xFF); // _Header
+        response[1] = (byte) (0xfc & 0xFF); // _Device
+        response[2] = (byte) (0x00 & 0xFF); // _Length_H
+        response[3] = (byte) (0x08 & 0xFF); // _Length_L
+        response[4] = (byte) (0xa1 & 0xFF); // _CMD
+        response[5] = (byte) (Integer.parseInt(String.valueOf(date.get(Calendar.YEAR)).substring(2)) & 0xFF); // Year (20XX)
+        response[6] = (byte) ((date.get(Calendar.MONTH) + 1) & 0xFF); // Month
+        response[7] = (byte) (date.get(Calendar.DAY_OF_MONTH) & 0xFF); // Day
+        response[8] = (byte) (date.get(Calendar.HOUR_OF_DAY) & 0xFF); // Hour
+        response[9] = (byte) (date.get(Calendar.MINUTE) & 0xFF); // Minute
+        response[10] = (byte) (0x07 & 0xFF); // CtrlMode (XXXX {buzzer [for the new batch per Protocol v1.0.4]} {dateFormat} {backlight} {unit})
+        response[11] = (byte) (0x3e & 0xFF); // Checksum
+
+        Log.d(TAG, "create response to a1, response: " + String.valueOf(Arrays.toString(response)));
+
+//        if(serviceUUID != null) {
+        writeCharacteristic(
+                writeCallback,
+                UUID.fromString("0000fff0-0000-1000-8000-00805f9b34fb"),
+                UUID.fromString("0000fff1-0000-1000-8000-00805f9b34fb"),
+                response,
+                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+//        }
+    }
+
+    private void createResponseToA3(int dcntH, int dcntL) {
+        LOG.d(TAG, "Create response to A3");
+
+        byte[] response = new byte[8];
+        // '_' marks constant values
+        response[0] = (byte) (0x4d & 0xFF);// _Header
+        response[1] = (byte) (0xfc & 0xFF); // _Device
+        response[2] = (byte) (0x00 & 0xFF);// _Length_H
+        response[3] = (byte) (0x04 & 0xFF);// _Length_L
+        response[4] = (byte) (0xa3 & 0xFF);// CMD
+        response[5] = (byte) dcntH;// DCnt_H
+        response[6] = (byte) dcntL;// DCnt_L
+        response[7] = (byte) (0xbb & 0xFF);// _Checksum
+
+        Log.d(TAG, "create response to a3, response: " + String.valueOf(Arrays.toString(response)));
+
+        writeCharacteristic(
+                writeCallback,
+                UUID.fromString("0000fff0-0000-1000-8000-00805f9b34fb"),
+                UUID.fromString("0000fff1-0000-1000-8000-00805f9b34fb"),
+                response,
+                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
     }
 
     @Override
@@ -419,7 +556,7 @@ public class Peripheral extends BluetoothGattCallback {
     @Override
     public void onCharacteristicWrite(BluetoothGatt gatt, BluetoothGattCharacteristic characteristic, int status) {
         super.onCharacteristicWrite(gatt, characteristic, status);
-        LOG.d(TAG, "onCharacteristicWrite " + characteristic);
+        LOG.d(TAG, "onCharacteristicWrite, characteristic status: " + status);
 
         synchronized(this) {
             if (writeCallback != null) {
@@ -684,27 +821,54 @@ public class Peripheral extends BluetoothGattCallback {
     }
 
     private void writeCharacteristic(CallbackContext callbackContext, UUID serviceUUID, UUID characteristicUUID, byte[] data, int writeType) {
+        Log.d(TAG, "writeCharacteristic");
+
+        Log.d(TAG, "serviceUUID: " + serviceUUID.toString());
+        Log.d(TAG, "characteristicUUID: " + characteristicUUID.toString());
+        Log.d(TAG, "writeType: " + writeType);
+        Log.d(TAG, "data: " + String.valueOf(Arrays.toString(data)));
 
         boolean success = false;
 
         if (gatt == null) {
-            callbackContext.error("BluetoothGatt is null");
+//            callbackContext.error("BluetoothGatt is null");
+            Log.d(TAG, "BluetoothGatt is null");
             return;
         }
 
         BluetoothGattService service = gatt.getService(serviceUUID);
 
         if (service == null) {
-            callbackContext.error("Service " + serviceUUID + " not found.");
+//            callbackContext.error("Service " + serviceUUID + " not found.");
+            Log.d(TAG, "service not found");
             return;
         }
 
-        BluetoothGattCharacteristic characteristic = findWritableCharacteristic(service, characteristicUUID, writeType);
+        BluetoothGattCharacteristic characteristic = service.getCharacteristic(characteristicUUID);
+//        BluetoothGattCharacteristic characteristic = findWritableCharacteristic(service, characteristicUUID, writeType);
+        Log.d(TAG, "writeCharacteristic, characteristic: " + characteristic.getUuid());
 
         if (characteristic == null) {
-            callbackContext.error("Characteristic " + characteristicUUID + " not found.");
+//            callbackContext.error("Characteristic " + characteristicUUID + " not found.");
+            Log.d(TAG, "characteristic not found");
         } else {
             characteristic.setValue(data);
+            byte[] testBytes = characteristic.getValue();
+
+            int[] testData = new int[testBytes.length];
+            for (int i=0; i<testData.length; i++) {
+                testData[i] = testBytes[i] & 0xff;
+            }
+            StringBuilder stringBuilder = new StringBuilder();
+            String[] hexData = new String[testBytes.length];
+            for(int i=0; i<hexData.length; i++) {
+                byte b = testBytes[i];
+                stringBuilder.append(String.format("%02X ", b));
+                hexData[i] = (String.format("%02X ", b));
+            }
+
+            LOG.d(TAG, "setValue, value as string " + String.valueOf(Arrays.toString(testData)));
+            LOG.d(TAG, "setValue, value in HEX " + String.valueOf(stringBuilder.toString()));
             characteristic.setWriteType(writeType);
             synchronized(this) {
                 writeCallback = callbackContext;
@@ -713,7 +877,8 @@ public class Peripheral extends BluetoothGattCallback {
                     success = true;
                 } else {
                     writeCallback = null;
-                    callbackContext.error("Write failed");
+//                    callbackContext.error("Write failed");
+                    Log.d(TAG, "Write failed");
                 }
             }
         }
@@ -875,6 +1040,10 @@ public class Peripheral extends BluetoothGattCallback {
 
     private String generateHashKey(UUID serviceUUID, BluetoothGattCharacteristic characteristic) {
         return String.valueOf(serviceUUID) + "|" + characteristic.getUuid() + "|" + characteristic.getInstanceId();
+    }
+
+    public void registerConnectionStateListener(BLECentralPlugin.ConnectionStateListener listener) {
+        listeners.add(listener);
     }
 
 }
