@@ -65,6 +65,13 @@
                 android:enabled="true"
                 android:exported="true"
                 android:permission="android.permission.BIND_JOB_SERVICE" />
+
+            <receiver android:name="com.megster.cordova.ble.central.BLEBroadcastReceiver" >
+                <intent-filter>
+                    <action android:name="com.naturalcycles.cordova.BLEBroadcast" >
+                    </action>
+                </intent-filter>
+            </receiver>
         </config-file>
 
         <source-file src="src/android/BLECentralPlugin.java"
@@ -76,6 +83,8 @@
         <source-file src="src/android/Helper.java"
             target-dir="src/com/megster/cordova/ble/central"/>
         <source-file src="src/android/UUIDHelper.java"
+            target-dir="src/com/megster/cordova/ble/central"/>
+        <source-file src="src/android/BLEBroadcastReceiver.java"
             target-dir="src/com/megster/cordova/ble/central"/>
 
     </platform>

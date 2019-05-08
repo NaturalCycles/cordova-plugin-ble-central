@@ -19,6 +19,7 @@ import android.app.Activity;
 import android.bluetooth.*;
 import android.os.Build;
 import android.os.Handler;
+import android.os.Looper;
 import android.util.Base64;
 import android.util.Log;
 
@@ -420,6 +421,10 @@ public class Peripheral extends BluetoothGattCallback {
         }
     }
 
+    /*
+    //    needs to be adjusted to new behaviour where several temperatures can be received as part of
+    //    one packet and one temperature recording can be split into several packets
+    */
     private void onResult(byte[] bytes, BluetoothGattCharacteristic characteristic) {
         int[] data = new int[bytes.length];
         for (int i=0; i<data.length; i++) {
@@ -441,7 +446,7 @@ public class Peripheral extends BluetoothGattCallback {
 
         switch (cmd.trim().toLowerCase()) {
             case "a1":
-                createResponseToA1(characteristic);
+                createResponseToA1();
                 break;
             case "a3":
                 createResponseToA3(data[6], data[7]);
@@ -478,7 +483,7 @@ public class Peripheral extends BluetoothGattCallback {
         }
     }
 
-    private void createResponseToA1(BluetoothGattCharacteristic characteristic) {
+    private void createResponseToA1() {
         LOG.d(TAG, "Create response to A1");
 
         Calendar date = new GregorianCalendar();
@@ -499,14 +504,12 @@ public class Peripheral extends BluetoothGattCallback {
 
         Log.d(TAG, "create response to a1, response: " + String.valueOf(Arrays.toString(response)));
 
-//        if(serviceUUID != null) {
         writeCharacteristic(
                 writeCallback,
                 UUID.fromString("0000fff0-0000-1000-8000-00805f9b34fb"),
                 UUID.fromString("0000fff1-0000-1000-8000-00805f9b34fb"),
                 response,
                 BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
-//        }
     }
 
     private void createResponseToA3(int dcntH, int dcntL) {
@@ -525,12 +528,14 @@ public class Peripheral extends BluetoothGattCallback {
 
         Log.d(TAG, "create response to a3, response: " + String.valueOf(Arrays.toString(response)));
 
-        writeCharacteristic(
+//        TODO: can use dcntL (number of measurements) to set the length of the delay if needed
+        Handler handler = new Handler(Looper.getMainLooper());
+        handler.postDelayed(() -> writeCharacteristic(
                 writeCallback,
                 UUID.fromString("0000fff0-0000-1000-8000-00805f9b34fb"),
                 UUID.fromString("0000fff1-0000-1000-8000-00805f9b34fb"),
                 response,
-                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT), 250);
     }
 
     @Override
@@ -844,8 +849,8 @@ public class Peripheral extends BluetoothGattCallback {
             return;
         }
 
-        BluetoothGattCharacteristic characteristic = service.getCharacteristic(characteristicUUID);
-//        BluetoothGattCharacteristic characteristic = findWritableCharacteristic(service, characteristicUUID, writeType);
+//        BluetoothGattCharacteristic characteristic = service.getCharacteristic(characteristicUUID);
+        BluetoothGattCharacteristic characteristic = findWritableCharacteristic(service, characteristicUUID, writeType);
         Log.d(TAG, "writeCharacteristic, characteristic: " + characteristic.getUuid());
 
         if (characteristic == null) {

@@ -18,6 +18,7 @@ import android.Manifest;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.ActivityManager;
+import android.app.AlarmManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -32,11 +33,6 @@ import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothManager;
-import android.bluetooth.le.BluetoothLeScanner;
-import android.bluetooth.le.ScanCallback;
-import android.bluetooth.le.ScanFilter;
-import android.bluetooth.le.ScanResult;
-import android.bluetooth.le.ScanSettings;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -48,9 +44,8 @@ import android.os.Handler;
 import android.os.Build;
 
 import android.os.IBinder;
-import android.os.ParcelUuid;
+import android.os.SystemClock;
 import android.provider.Settings;
-import android.support.annotation.RequiresPermission;
 import android.support.v4.app.NotificationCompat;
 import android.support.v4.app.NotificationManagerCompat;
 import android.util.Log;
@@ -135,13 +130,9 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
 
     // Android 23 requires new permissions for BluetoothLeScanner.startScan()
     private static final String ACCESS_COARSE_LOCATION = Manifest.permission.ACCESS_COARSE_LOCATION;
-    private static final String ACCESS_FINE_LOCATION = Manifest.permission.ACCESS_FINE_LOCATION;
-    private static final String BLUETOOTH_ADMIN = Manifest.permission.BLUETOOTH_ADMIN;
     private static final String WRITE_EXTERNAL_STORAGE = Manifest.permission.WRITE_EXTERNAL_STORAGE;
     private static final int REQUEST_ACCESS_COARSE_LOCATION = 2;
     private static final int REQUEST_EXTERNAL_STORAGE = 3;
-    private static final int REQUEST_ACCESS_FINE_LOCATION = 4;
-    private static final int REQUEST_BLUETOOTH_ADMIN = 5;
     private CallbackContext permissionCallback;
     private UUID[] serviceUUIDs;
     private int scanSeconds;
@@ -157,7 +148,16 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
     }};
 
     public void onDestroy() {
+
         removeStateListener();
+
+//        Intent intent = new Intent(cordova.getActivity(), BLEBroadcastReceiver.class);
+//        PendingIntent alarmIntent = PendingIntent.getBroadcast(cordova.getActivity(), 0, intent, 0);
+//        AlarmManager alarmMgr = (AlarmManager) cordova.getActivity().getSystemService(Context.ALARM_SERVICE);
+//        Date date = new Date();
+//        date.setTime(new Date().getTime() + 5 * 60 * 1000);
+////        alarmMgr.setInexactRepeating(AlarmManager.RTC_WAKEUP, date.getTime(), 5 * 60 * 1000, alarmIntent);
+//        alarmMgr.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, date.getTime(), alarmIntent);
     }
 
     public void onReset() {
@@ -181,84 +181,25 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
         }
     }
 
-    @TargetApi(26)
     @Override
     public void initialize(CordovaInterface cordova, CordovaWebView webView) {
         super.initialize(cordova, webView);
         Log.d(NATURAL_TAG, "in initialise");
+
+        Intent intent = new Intent(cordova.getActivity(), BLEBroadcastReceiver.class);
+        PendingIntent alarmIntent = PendingIntent.getBroadcast(cordova.getActivity(), 0, intent, 0);
+        AlarmManager alarmMgr = (AlarmManager) cordova.getActivity().getSystemService(Context.ALARM_SERVICE);
+        Date date = new Date();
+        date.setTime(new Date().getTime() + 3 * 60 * 1000);
+//        alarmMgr.setInexactRepeating(AlarmManager.RTC_WAKEUP, date.getTime(), 5 * 60 * 1000, alarmIntent);
+//        alarmMgr.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, date.getTime(), alarmIntent);
+        alarmMgr.setInexactRepeating(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + 3 * 60 * 1000, 3 * 60 * 1000, alarmIntent);
+
 //        initService();
-
-        JobScheduler tm = (JobScheduler) cordova.getActivity().getSystemService(Context.JOB_SCHEDULER_SERVICE);
-        Log.d(NATURAL_TAG, "number of pending jobs: " + tm.getAllPendingJobs().size());
-        if(tm.getAllPendingJobs().size() > 0) {
-            Log.d(NATURAL_TAG, "Job already scheduled; skipping scheduling");
-            BLEService.saveLog(new Date().toString() + " NATURAL - scheduling job");
-        } else {
-            JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(cordova.getActivity(), BLEService.class));
-//            builder.setMinimumLatency(60 * 1000);
-//            builder.setOverrideDeadline(3 * 60 * 1000); //this should be the time within which everything will be initialised after on stop job
-            builder.setPeriodic(15 * 60 * 1000);
-            builder.setPersisted(true);
-
-            Log.d(NATURAL_TAG, "Scheduling job from init service");
-            tm.schedule(builder.build());
-        }
 
 //        Intent intent = new Intent(cordova.getActivity(), AppService.class);
 //        cordova.getActivity().startService(intent);
-        startMyOwnScan();
     }
-
-    @TargetApi(26)
-    @RequiresPermission(Manifest.permission.BLUETOOTH_ADMIN)
-    private void startMyOwnScan() {
-        SharedPreferences prefs = webView.getContext().getSharedPreferences(MAC_ADDRESS_PREFS, Context.MODE_PRIVATE);
-        macAddress = "18:7A:93:6F:B5:6D"; //prefs.getString(MAC_ADDRESS, null);
-
-        if(macAddress != null) {
-            Log.d(NATURAL_TAG, "init bluetoothlescanner scan, mac address: " + macAddress);
-
-            BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
-            ScanFilter filter = new ScanFilter.Builder().setDeviceAddress(macAddress).setServiceUuid(
-//                    ParcelUuid.fromString("0000fff0-0000-1000-8000-00805f9b34fb")
-                    new ParcelUuid(UUID.fromString("0000fff0-0000-1000-8000-00805f9b34fb"))
-            ).build();
-            List<ScanFilter> filters = new ArrayList<>();
-            filters.add(filter);
-            ScanSettings settings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).setReportDelay(1000).build();
-            Intent intent = new Intent(cordova.getActivity(), BLECentralPlugin.class);
-            PendingIntent callbackIntent = PendingIntent.getService(cordova.getActivity(), 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
-//            adapter.getBluetoothLeScanner().startScan(filters, settings, mScanCallback);
-            adapter.getBluetoothLeScanner().startScan(filters, settings, callbackIntent);
-        } else {
-            Log.d(NATURAL_TAG, "NOT initialising bluetoothlescanner scan,");
-        }
-    }
-
-    private final ScanCallback mScanCallback = new ScanCallback() {
-        @Override
-        public void onScanResult(int callbackType, ScanResult result) {
-            // We scan with report delay > 0. This will never be called.
-            Log.d(NATURAL_TAG, "ScanCallback, scan result: " + result.toString());
-        }
-
-        @Override
-        public void onBatchScanResults(List<ScanResult> results) {
-            if (!results.isEmpty()) {
-                ScanResult result = results.get(0);
-                BluetoothDevice device = result.getDevice();
-                String deviceAddress = device.getAddress();
-                // Device detected, we can automatically connect to it and stop the scan
-                Log.d(NATURAL_TAG, "ScanCallback, batch scan results: " + deviceAddress);
-            }
-        }
-
-        @Override
-        public void onScanFailed(int errorCode) {
-            // Scan error
-            Log.d(NATURAL_TAG, "ScanCallback, scan failed");
-        }
-    };
 
     private void initService() {
         Log.d(NATURAL_TAG, "in on start");
@@ -552,12 +493,12 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
             };
         }
 
-//        try {
-//            IntentFilter intentFilter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
-//            webView.getContext().registerReceiver(this.stateReceiver, intentFilter);
-//        } catch (Exception e) {
-//            LOG.e(TAG, "Error registering state receiver: " + e.getMessage(), e);
-//        }
+        try {
+            IntentFilter intentFilter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
+            webView.getContext().registerReceiver(this.stateReceiver, intentFilter);
+        } catch (Exception e) {
+            LOG.e(TAG, "Error registering state receiver: " + e.getMessage(), e);
+        }
     }
 
     private void removeStateListener() {
@@ -582,7 +523,7 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
 
             SharedPreferences sharedPreferences = webView.getContext().getSharedPreferences(MAC_ADDRESS_PREFS, Context.MODE_PRIVATE);
             SharedPreferences.Editor editor = sharedPreferences.edit();
-            editor.putString(MAC_ADDRESS_PREFS, macAddress);
+            editor.putString(MAC_ADDRESS, macAddress);
             editor.apply();
         }
 
@@ -753,32 +694,14 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
             return;
         }
 
-//        if(!PermissionHelper.hasPermission(this, ACCESS_COARSE_LOCATION)) {
-//            // save info so we can call this method again after permissions are granted
-//            permissionCallback = callbackContext;
-//            this.serviceUUIDs = serviceUUIDs;
-//            this.scanSeconds = scanSeconds;
-//            PermissionHelper.requestPermission(this, REQUEST_ACCESS_COARSE_LOCATION, ACCESS_COARSE_LOCATION);
-//            return;
-//        }
-
-        if(!PermissionHelper.hasPermission(this, ACCESS_FINE_LOCATION)) {
+        if(!PermissionHelper.hasPermission(this, ACCESS_COARSE_LOCATION)) {
             // save info so we can call this method again after permissions are granted
             permissionCallback = callbackContext;
             this.serviceUUIDs = serviceUUIDs;
             this.scanSeconds = scanSeconds;
-            PermissionHelper.requestPermission(this, REQUEST_ACCESS_FINE_LOCATION, ACCESS_FINE_LOCATION);
+            PermissionHelper.requestPermission(this, REQUEST_ACCESS_COARSE_LOCATION, ACCESS_COARSE_LOCATION);
             return;
         }
-
-//        if(!PermissionHelper.hasPermission(this, BLUETOOTH_ADMIN)) {
-//            // save info so we can call this method again after permissions are granted
-//            permissionCallback = callbackContext;
-//            this.serviceUUIDs = serviceUUIDs;
-//            this.scanSeconds = scanSeconds;
-//            PermissionHelper.requestPermission(this, REQUEST_BLUETOOTH_ADMIN, BLUETOOTH_ADMIN);
-//            return;
-//        }
 
         if(!PermissionHelper.hasPermission(this, WRITE_EXTERNAL_STORAGE)) {
             // save info so we can call this method again after permissions are granted
@@ -964,11 +887,7 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
             bleBroadcastReceiver = new BLEBroadcastReceiver();
             IntentFilter filter = new IntentFilter();
             filter.addAction("com.naturalcycles.cordova.BLEBroadcast");
-//            try {
-//                registerReceiver(bleBroadcastReceiver, filter);
-//            } catch(Exception ex) {
-//                Log.e(NATURAL_TAG + "- ERROR", "registerReceiver failed with exception: " + ex.toString());
-//            }
+            registerReceiver(bleBroadcastReceiver, filter);
 
             Peripheral peripheral = peripherals.get(thermMacAddress);
             if(peripheral != null) {
@@ -977,10 +896,6 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
             } else {
                 LOG.d(NATURAL_TAG, "Peripheral is NULL");
             }
-
-//            IntentFilter filter2 = new IntentFilter();
-//            filter2.addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
-//            registerReceiver(bleBroadcastReceiver, filter2);
 
             Log.d(NATURAL_TAG, "on start command");
             saveLog( new Date().toString() + " NATURAL - on start command");
@@ -1010,160 +925,16 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
             startForeground(2, notification);
         }
 
-        @TargetApi(26)
         @Override
         public boolean onStartJob(final JobParameters params) {
             Log.d(NATURAL_TAG, "start job");
             saveLog(new Date().toString() + " NATURAL - start job");
-
-//            startMyOwnForeground();
-
-            SharedPreferences prefs = getSharedPreferences(MAC_ADDRESS_PREFS, Context.MODE_PRIVATE);
-            macAddress = "18:7A:93:6F:B5:6D"; //prefs.getString(MAC_ADDRESS, null);
-
-            if(macAddress != null) {
-                Log.d(NATURAL_TAG, "init bluetoothlescanner scan, mac address: " + macAddress);
-
-                BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
-                ScanFilter filter = new ScanFilter.Builder().setDeviceAddress(macAddress).setServiceUuid(
-//                    ParcelUuid.fromString("0000fff0-0000-1000-8000-00805f9b34fb")
-                        new ParcelUuid(UUID.fromString("0000fff0-0000-1000-8000-00805f9b34fb"))
-                ).build();
-                List<ScanFilter> filters = new ArrayList<>();
-                filters.add(filter);
-                ScanSettings settings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).setReportDelay(1000).build();
-                Intent intent = new Intent(this, BLECentralPlugin.class);
-                PendingIntent callbackIntent = PendingIntent.getService(this, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT);
-                adapter.getBluetoothLeScanner().startScan(filters, settings, new ScanCallback() {
-                    @Override
-                    public void onScanResult(int callbackType, ScanResult result) {
-                        // We scan with report delay > 0. This will never be called.
-                        Log.d(NATURAL_TAG, "ScanCallback, scan result: " + result.toString());
-                    }
-
-                    @Override
-                    public void onBatchScanResults(List<ScanResult> results) {
-                        if (!results.isEmpty()) {
-                            ScanResult result = results.get(0);
-                            BluetoothDevice device = result.getDevice();
-                            String deviceAddress = device.getAddress();
-                            // Device detected, we can automatically connect to it and stop the scan
-                            Log.d(NATURAL_TAG, "ScanCallback, batch scan results: " + deviceAddress);
-                        }
-                    }
-
-                    @Override
-                    public void onScanFailed(int errorCode) {
-                        // Scan error
-                        Log.d(NATURAL_TAG, "ScanCallback, scan failed");
-                    }
-                });
-//                adapter.getBluetoothLeScanner().startScan(filters, settings, callbackIntent);
-            } else {
-                Log.d(NATURAL_TAG, "NOT initialising bluetoothlescanner scan,");
-            }
-
-            // Uses a handler to delay the execution of jobFinished().
-//            final Handler handler = new Handler();
-//            handler.post(new Runnable() {
-//                @Override
-//                public void run() {
-//                    Log.d(NATURAL_TAG, "job running");
-//                    saveLog(new Date().toString() + " NATURAL - job running");
-
-//                    Notification notification =
-//                            new NotificationCompat.Builder(BLEService.this, "NaturalBLE")
-//                                    .setContentTitle("My notification")
-//                                    .setContentText("Hello World!").build();
-//
-//                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-//                        startMyOwnForeground();
-//                    else
-//                        startForeground(1, notification);
-
-//                  Try if it's really necessary to try to connect here
-
-//                    if(bluetoothAdapter == null) {
-//                        BluetoothManager bluetoothManager = (BluetoothManager) BLEService.this.getSystemService(Context.BLUETOOTH_SERVICE);
-//                        bluetoothAdapter = bluetoothManager.getAdapter();
-//                    }
-//
-//                    try {
-//                        if(thermMacAddress == null) {
-//                            SharedPreferences prefs = getSharedPreferences(MAC_ADDRESS_PREFS, MODE_PRIVATE);
-//                            thermMacAddress = prefs.getString(MAC_ADDRESS, null);
-//
-//                            Log.d(BLECentralPlugin.NATURAL_TAG, "read MAC address from shared prefs, macAddress: " + thermMacAddress);
-//                            saveLog(new Date().toString() + " NATURAL - read MAC address from shared prefs");
-//                        }
-//
-//                        BluetoothDevice device = bluetoothAdapter.getRemoteDevice(thermMacAddress);
-//                        Peripheral peripheral = new Peripheral(device);
-//                        peripherals.put(thermMacAddress, peripheral);
-//                        device.connectGatt(BLEService.this, true, peripheral);
-//
-//                        Log.d(BLECentralPlugin.NATURAL_TAG, "connect gatt called on device");
-//                        saveLog(new Date().toString() + " NATURAL - connect gatt called on device");
-//
-//                    } catch (Exception ex) {
-//                        Log.e(NATURAL_TAG + " ERROR", ex.toString());
-//                        saveLog(new Date().toString() + " NATURAL ERROR - " + ex.toString());
-//                    }
-
-//                    Handler handler2 = new Handler();
-//                    handler2.postDelayed(new Runnable() {
-//                        @Override
-//                        public void run() {
-//                            Log.d(NATURAL_TAG, "before stop service");
-//                            saveLog(new Date().toString() + " NATURAL - before stop service");
-//
-////                            stopForeground(true);
-//                            Log.d(NATURAL_TAG, "service stopped");
-//                            saveLog(new Date().toString() + " NATURAL - service stopped");
-//
-//                            JobScheduler scheduler = (JobScheduler) BLEService.this.getSystemService(Context.JOB_SCHEDULER_SERVICE);
-//                            if(scheduler.getAllPendingJobs().size() < 1) {
-//                                JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(BLEService.this, BLEService.class));
-//                                builder.setMinimumLatency(2 * 60 * 1000);
-//                                builder.setOverrideDeadline(2 * 60 * 1000);
-//                                scheduler.schedule(builder.build());
-//
-//                                Log.d(NATURAL_TAG, "schedule job from handler2");
-//                                Log.d(NATURAL_TAG, "handler2; number of jobs: " + scheduler.getAllPendingJobs().size());
-//                                saveLog(new Date().toString() + " NATURAL - schedule job from handler2");
-//                            } else {
-//                                Log.d(NATURAL_TAG, "handler2 job already scheduled; skipping scheduling");
-//                                saveLog(new Date().toString() + " NATURAL - handler2 job already scheduled; skipping scheduling");
-//                            }
-//                        }
-//                    }, 5000);
-
-//                    int minutes = 15;
-//                    Log.d(NATURAL_TAG, "calling handler to run in " + String.valueOf(minutes) + " minutes");
-//                    saveLog(new Date().toString() + " NATURAL - calling handler to run in " + String.valueOf(minutes) + " minutes");
-//                    handler.postDelayed(this, minutes * 60 * 1000);
-//
-//                }
-//            });
-
             // Return true as there's more work to be done with this job.
             return true;
         }
 
         @Override
         public boolean onStopJob(JobParameters params) {
-            JobScheduler scheduler = (JobScheduler) BLEService.this.getSystemService(Context.JOB_SCHEDULER_SERVICE);
-            if(scheduler.getAllPendingJobs().size() < 2) {
-                JobInfo.Builder builder = new JobInfo.Builder(new Random().nextInt(), new ComponentName(BLEService.this, BLEService.class));
-//                builder.setMinimumLatency(2 * 60 * 1000);
-//                builder.setOverrideDeadline(2 * 60 * 1000);
-                builder.setPeriodic(15 * 60 * 1000);
-                scheduler.schedule(builder.build());
-            }
-
-            Log.d(NATURAL_TAG, "On stop job scheduling job");
-            saveLog(new Date().toString() + " NATURAL - On stop job scheduling job");
-
             // Return false to drop the job.
             return true;
         }
@@ -1172,26 +943,15 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
         public void onDestroy() {
             Log.d(NATURAL_TAG + " EXIT", "service on destroy");
             saveLog(new Date().toString() + " NATURAL EXIT - service on destroy");
-//
-//            Intent broadcastIntent = new Intent("com.megster.cordova.ble.central.BLERestart");
-//            broadcastIntent.putExtra(MAC_ADDRESS, thermMacAddress);
-//            sendBroadcast(broadcastIntent);
 
-//            try {
-//                unregisterReceiver(bleBroadcastReceiver);
-//            } catch (Exception ex) {
-//                Log.e(NATURAL_TAG + "ERROR", "receiver not registered in onDestroy, exception: " + ex.toString());
-//            }
+            try {
+                unregisterReceiver(bleBroadcastReceiver);
+            } catch (Exception ex) {
+                Log.e(NATURAL_TAG + "-ERROR", "unregister receiver error: " + ex.toString());
+            }
 
             super.onDestroy();
         }
-
-//        public void saveStringToSharedPreferences(String value) {
-//            SharedPreferences sharedPreferences = getSharedPreferences(MAC_ADDRESS_PREFS, Context.MODE_PRIVATE);
-//            SharedPreferences.Editor editor = sharedPreferences.edit();
-//            editor.putString("NC_STUFF", value);
-//            editor.apply();
-//        }
 
         public static void saveLog(String text) {
             File logFile = new File("sdcard/new_log.txt");
@@ -1253,29 +1013,8 @@ public class BLECentralPlugin extends CordovaPlugin implements BluetoothAdapter.
         }
     }
 
-    public static class AppService extends Service {
-
-        public AppService() {}
-
-        @Override
-        public IBinder onBind(Intent intent) {
-            // TODO Auto-generated method stub
-            return null;
-        }
-
-        @Override
-        public void onCreate() {
-            Log.d(NATURAL_TAG, "app service on create");
-        }
-
-        @Override
-        public int onStartCommand(Intent intent, int flags, int startId) {
-//            Toast.makeText(this, " MyService Started", Toast.LENGTH_LONG).show();
-            Log.d(NATURAL_TAG, "app service on start command");
-            return START_STICKY;
-        }
-    }
-
+    //  interface used to handle received data (e.g. save temperature to shared preferences)
+//  callbacks are triggered in Peripheral which doesn't have a context
     interface ConnectionStateListener {
         void peripheralConnected();
         void temperatureReceived(String temperature);
